@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in — CCCS Announcements</title>
+<link rel="stylesheet" href="/static/styles.css?v=__VERSION__">
+</head>
+<body class="signin-body">
+
+<main class="signin">
+  <div class="card signin__card">
+    <h1 class="signin__title">CCCS Announcements</h1>
+    <p class="signin__lead">Sign in to make an announcement.</p>
+
+    <!-- Shown only before the first administrator has claimed the account. It
+         names the username, never the password -- the username was always
+         guessable, the password is not. -->
+    <div class="setup-hint" id="setup-hint" hidden>
+      <strong>First time?</strong>
+      <span id="setup-hint-text"></span>
+    </div>
+
+    <div class="banner banner--error signin__error" id="error" role="alert" hidden>
+      <span id="error-text"></span>
+    </div>
+
+    <form id="signin-form" novalidate>
+      <label class="field__label" for="username">Username</label>
+      <input class="field__input field__input--line" id="username" name="username"
+             type="text" autocomplete="username" autocapitalize="none"
+             autocorrect="off" spellcheck="false" required>
+
+      <label class="field__label" for="password">Password</label>
+      <input class="field__input field__input--line" id="password" name="password"
+             type="password" autocomplete="current-password" required>
+
+      <div class="actions">
+        <button type="submit" class="btn btn--send" id="signin">Sign in</button>
+      </div>
+    </form>
+
+    <p class="notice">
+      Every announcement is recorded against the account that sent it.
+      Do not share your password or let someone else send under your name.
+    </p>
+  </div>
+</main>
+
+<script src="/static/login.js?v=__VERSION__"></script>
+</body>
+</html>

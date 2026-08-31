@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin — CCCS Announcements</title>
+<link rel="stylesheet" href="/static/styles.css?v=__VERSION__">
+</head>
+<body>
+
+<div class="stickytop">
+<header class="topbar">
+  <h1 class="topbar__title">CCCS Announcements — Admin</h1>
+  <div class="who">
+    <span class="who__name" id="who-name"></span>
+    <a class="who__link" href="/">Back to announcements</a>
+    <button type="button" class="who__link" id="signout">Sign out</button>
+  </div>
+</header>
+
+<div class="banner banner--error" id="banner" role="alert" hidden>
+  <span class="banner__text" id="banner-text"></span>
+</div>
+</div>
+
+<main class="layout layout--single">
+
+  <!-- ------------------------------------------------------------------ -->
+  <section class="card" aria-labelledby="accounts-heading">
+    <h2 id="accounts-heading" class="card__heading">Staff accounts</h2>
+
+    <form id="add-form" class="inline-form" novalidate>
+      <div>
+        <label class="field__label" for="new-username">Username</label>
+        <input class="field__input field__input--line" id="new-username" type="text"
+               autocapitalize="none" autocorrect="off" spellcheck="false"
+               placeholder="jsmith" required>
+      </div>
+      <div>
+        <label class="field__label" for="new-name">Full name</label>
+        <input class="field__input field__input--line" id="new-name" type="text"
+               placeholder="Jordan Smith" required>
+      </div>
+      <div>
+        <label class="field__label" for="new-role">Role</label>
+        <select class="field__select" id="new-role">
+          <option value="staff" selected>Staff</option>
+          <option value="admin">Administrator</option>
+        </select>
+      </div>
+      <div>
+        <button type="submit" class="btn btn--send btn--small" id="add-user">Add account</button>
+      </div>
+    </form>
+
+    <!-- A new or reset password is shown once, here, and never again. -->
+    <div class="reveal" id="reveal" hidden>
+      <p><strong id="reveal-who"></strong> can sign in with this password:</p>
+      <p class="reveal__password" id="reveal-password"></p>
+      <p>Write it down or hand it over now — it is not stored anywhere you can
+         read it, and it cannot be shown again. They will be asked to choose
+         their own password when they first sign in.</p>
+      <button type="button" class="btn btn--quiet btn--small" id="reveal-done">Done</button>
+    </div>
+
+    <div class="table-wrap">
+      <table class="grid" id="users">
+        <thead>
+          <tr>
+            <th scope="col">Name</th>
+            <th scope="col">Username</th>
+            <th scope="col">Role</th>
+            <th scope="col">Status</th>
+            <th scope="col">Last signed in</th>
+            <th scope="col">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="users-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------------ -->
+  <section class="card" aria-labelledby="log-heading">
+    <h2 id="log-heading" class="card__heading">Announcement log</h2>
+    <p class="notice" style="margin-top:0;border:0;padding-top:0">
+      Every announcement, who sent it, what was spoken, and what happened.
+      Searching, date filters and CSV export arrive with the full admin panel.
+    </p>
+    <div class="table-wrap">
+      <table class="grid" id="log">
+        <thead>
+          <tr>
+            <th scope="col">Time</th>
+            <th scope="col">Who</th>
+            <th scope="col">Spoken</th>
+            <th scope="col">Result</th>
+            <th scope="col">Length</th>
+          </tr>
+        </thead>
+        <tbody id="log-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------------ -->
+  <section class="card" aria-labelledby="security-heading">
+    <h2 id="security-heading" class="card__heading">Sign-ins and account changes</h2>
+    <div class="table-wrap">
+      <table class="grid" id="events">
+        <thead>
+          <tr>
+            <th scope="col">Time</th>
+            <th scope="col">Event</th>
+            <th scope="col">Account</th>
+            <th scope="col">From</th>
+            <th scope="col">Detail</th>
+          </tr>
+        </thead>
+        <tbody id="events-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+</main>
+
+<script src="/static/admin.js?v=__VERSION__"></script>
+</body>
+</html>

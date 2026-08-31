@@ -1,0 +1,213 @@
+<#
+    First-time setup for the CCCS Announcer.
+
+    ANNOUNCER.bat runs this automatically the first time. You should not need
+    to run it by hand, but it is safe to: everything it does is skipped if it
+    has already been done.
+
+    It is PowerShell rather than batch because it downloads files and asks for
+    administrator rights, and batch files are miserable at both.
+#>
+
+$ErrorActionPreference = 'Stop'
+
+# Always work from the announcer folder, whatever directory we were called from.
+$root = Split-Path -Parent $PSScriptRoot
+Set-Location $root
+
+function Step($number, $text) { Write-Host ("  [{0}/6] {1}" -f $number, $text) }
+function Ok()                  { Write-Host "        OK." -ForegroundColor Green }
+function Note($text)           { Write-Host ("        " + $text) -ForegroundColor Yellow }
+
+Write-Host ""
+Write-Host "  =================================================================="
+Write-Host "   CCCS ANNOUNCER - FIRST-TIME SETUP"
+Write-Host ""
+Write-Host "   This takes a few minutes and needs internet access."
+Write-Host "   You only have to do it once."
+Write-Host "  =================================================================="
+Write-Host ""
+
+# ---------------------------------------------------------------- 1. Python
+Step 1 "Checking for Python..."
+
+$pythonCommand = $null
+$pythonArgs = @()
+
+if (Get-Command python -ErrorAction SilentlyContinue) {
+    $pythonCommand = 'python'
+} elseif (Get-Command py -ErrorAction SilentlyContinue) {
+    $pythonCommand = 'py'
+    $pythonArgs = @('-3')
+}
+
+if (-not $pythonCommand) {
+    Note "Not installed. Downloading Python, please wait..."
+    $installer = Join-Path $env:TEMP 'python-announcer-setup.exe'
+    try {
+        Invoke-WebRequest -UseBasicParsing `
+            -Uri 'https://www.python.org/ftp/python/3.12.8/python-3.12.8-amd64.exe' `
+            -OutFile $installer
+    } catch {
+        Write-Host ""
+        Write-Host "   Could not download Python." -ForegroundColor Red
+        Write-Host "   Install it by hand from https://www.python.org/downloads/windows/"
+        Write-Host "   IMPORTANT: tick 'Add python.exe to PATH' on the first screen."
+        Write-Host "   Then run ANNOUNCER.bat again."
+        exit 1
+    }
+
+    Note "Installing Python, please wait..."
+    # Per-user install needs no administrator rights.
+    Start-Process -FilePath $installer -Wait -ArgumentList `
+        '/passive', 'InstallAllUsers=0', 'PrependPath=1', 'Include_test=0'
+    Remove-Item $installer -ErrorAction SilentlyContinue
+
+    # PATH has not refreshed in this process, so look where it lands.
+    foreach ($version in @('312', '313', '311')) {
+        $candidate = Join-Path $env:LOCALAPPDATA "Programs\Python\Python$version\python.exe"
+        if (Test-Path $candidate) { $pythonCommand = $candidate; break }
+    }
+    if (-not $pythonCommand -and (Get-Command python -ErrorAction SilentlyContinue)) {
+        $pythonCommand = 'python'
+    }
+    if (-not $pythonCommand) {
+        Write-Host ""
+        Write-Host "   Python installed but could not be found." -ForegroundColor Red
+        Write-Host "   Restart the computer and run ANNOUNCER.bat again."
+        exit 1
+    }
+}
+Ok
+
+# ------------------------------------------------------------ 2. The program
+Step 2 "Setting up the announcer..."
+
+$venvPython = Join-Path $root '.venv\Scripts\python.exe'
+if (-not (Test-Path $venvPython)) {
+    & $pythonCommand @pythonArgs -m venv .venv
+    if ($LASTEXITCODE -ne 0) { Write-Host "   Could not create the environment." -ForegroundColor Red; exit 1 }
+}
+
+& $venvPython -m pip install --quiet --upgrade pip
+& $venvPython -m pip install --quiet -r requirements.txt
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "   Could not install what the announcer needs." -ForegroundColor Red
+    exit 1
+}
+Ok
+
+# ------------------------------------------------------- 3. Speech and voice
+Step 3 "Getting the speech engine and voice..."
+
+if (Test-Path (Join-Path $root 'piper\piper.exe')) {
+    Note "Speech engine already here."
+} else {
+    Note "Downloading the speech engine, about 20 MB..."
+    $zip = Join-Path $env:TEMP 'piper.zip'
+    try {
+        Invoke-WebRequest -UseBasicParsing `
+            -Uri 'https://github.com/rhasspy/piper/releases/latest/download/piper_windows_amd64.zip' `
+            -OutFile $zip
+        # The archive contains a top-level "piper" folder.
+        Expand-Archive -Force -Path $zip -DestinationPath $root
+        Remove-Item $zip -ErrorAction SilentlyContinue
+    } catch {
+        Write-Host ""
+        Write-Host "   Could not download the speech engine." -ForegroundColor Red
+        Write-Host "   This computer needs internet access for setup, once only."
+        Write-Host "   If it has none, DEPLOYMENT.md explains how to copy the"
+        Write-Host "   files across on a USB stick."
+        exit 1
+    }
+}
+
+$voices = Join-Path $root 'voices'
+if (-not (Test-Path $voices)) { New-Item -ItemType Directory -Path $voices | Out-Null }
+
+$voiceFile = Join-Path $voices 'en_US-lessac-medium.onnx'
+if (Test-Path $voiceFile) {
+    Note "Voice already here."
+} else {
+    Note "Downloading the voice, about 65 MB..."
+    $base = 'https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx'
+    try {
+        Invoke-WebRequest -UseBasicParsing -Uri $base -OutFile $voiceFile
+        Invoke-WebRequest -UseBasicParsing -Uri ($base + '.json') -OutFile ($voiceFile + '.json')
+    } catch {
+        Write-Host ""
+        Write-Host "   Could not download the voice." -ForegroundColor Red
+        Write-Host "   This computer needs internet access for setup, once only."
+        exit 1
+    }
+}
+Ok
+
+# ------------------------------------------------------- 4. Database, chimes
+Step 4 "Creating the database and chimes..."
+& $venvPython scripts\seed.py | Out-Null
+if ($LASTEXITCODE -ne 0) { Write-Host "   Setup of the data folder failed." -ForegroundColor Red; exit 1 }
+Ok
+
+# ---------------------------------------------------------- 5. Start at logon
+Step 5 "Starting automatically when $env:USERNAME signs in..."
+try {
+    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'install_task.ps1') | Out-Null
+    Ok
+} catch {
+    Note "COULD NOT set that up. Run this afterwards:"
+    Note "    powershell -ExecutionPolicy Bypass -File scripts\install_task.ps1"
+}
+
+# --------------------------------------------------------------- 6. Firewall
+# Read the real port rather than assuming 8080, in case .env changed it.
+$port = 8080
+try {
+    $reported = & $venvPython -c "import sys; sys.path.insert(0, '.'); from app.config import load_config; print(load_config().port)"
+    if ($reported -match '^\d+$') { $port = [int]$reported }
+} catch { }
+
+Step 6 "Letting staff computers reach it through the firewall..."
+Note "Windows will ask for permission - say Yes."
+$rule = "New-NetFirewallRule -DisplayName 'CCCS Announcer' -Direction Inbound " +
+        "-Protocol TCP -LocalPort $port -Action Allow -Profile Domain,Private " +
+        "-ErrorAction SilentlyContinue | Out-Null"
+try {
+    Start-Process powershell -Verb RunAs -Wait -ArgumentList '-NoProfile', '-Command', $rule
+    Ok
+} catch {
+    Note "SKIPPED. Staff computers may not be able to connect."
+    Note "Run this later in an ADMINISTRATOR PowerShell window:"
+    Write-Host ""
+    Write-Host "    $rule" -ForegroundColor Yellow
+    Write-Host ""
+}
+
+# ------------------------------------------------------------------- Finish
+$dataDir = Join-Path $root 'data'
+if (-not (Test-Path $dataDir)) { New-Item -ItemType Directory -Path $dataDir | Out-Null }
+Set-Content -Path (Join-Path $dataDir 'setup-complete.txt') `
+    -Value "Setup finished. Delete this file to make ANNOUNCER.bat run setup again."
+
+Write-Host ""
+Write-Host "  =================================================================="
+Write-Host "   SETUP FINISHED - starting the announcer now"
+Write-Host "  =================================================================="
+
+& $venvPython scripts\show_address.py
+
+Write-Host ""
+Write-Host "   TWO THINGS STILL TO DO. No program is allowed to do these:" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "     A. Make the computer switch itself on when power comes back."
+Write-Host "        Restart, press DEL or F2 for the BIOS, and set"
+Write-Host "        'Restore on AC Power Loss' to 'Power On'. Save and exit."
+Write-Host ""
+Write-Host "     B. Make Windows sign in to this account by itself."
+Write-Host "        Press the Windows key, type  netplwiz  and press Enter,"
+Write-Host "        then untick 'Users must enter a user name and password'."
+Write-Host ""
+Write-Host "   DEPLOYMENT.md explains both if you get stuck."
+Write-Host ""
+Read-Host "   Press Enter to start the announcer"
+exit 0

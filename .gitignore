@@ -1,0 +1,22 @@
+# Virtual environment
+.venv/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local settings (copy .env.example to .env)
+.env
+
+# Everything the announcer creates or is given at runtime.
+# This holds the database (accounts, password hashes, every announcement),
+# the logs, and the first-time password file. None of it belongs in git.
+data/
+
+# Downloaded by ANNOUNCER.bat on first run. Large binaries, not source.
+piper/
+voices/
+
+# macOS
+.DS_Store

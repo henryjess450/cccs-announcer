@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CCCS Announcements</title>
+<link rel="stylesheet" href="/static/styles.css?v=__VERSION__">
+</head>
+<body>
+
+<!-- The header and the error banner scroll together as one sticky unit.
+     If only the header is sticky, the banner slides underneath it the moment
+     anyone scrolls -- hiding the single most important message on the page. -->
+<div class="stickytop">
+<header class="topbar">
+  <h1 class="topbar__title">CCCS Announcements</h1>
+
+  <!-- Status is sticky and always visible without scrolling: a staff member
+       standing at the desk must be able to tell at a glance whether the system
+       is idle, busy, or broken. -->
+  <div class="status" id="status" role="status" aria-live="polite">
+    <span class="status__dot" id="status-dot" aria-hidden="true"></span>
+    <span class="status__text" id="status-text">Connecting&hellip;</span>
+  </div>
+
+  <div class="who">
+    <span class="who__name" id="who-name"></span>
+    <a class="who__link" id="admin-link" href="/admin" hidden>Admin</a>
+    <button type="button" class="who__link" id="signout">Sign out</button>
+  </div>
+</header>
+
+<div class="banner banner--error" id="banner" role="alert" hidden>
+  <span class="banner__text" id="banner-text"></span>
+</div>
+
+<!-- Shown whenever the announcer is running on a mock voice or mock audio
+     device. Without it, "test mode" sounds identical to "broken". -->
+<div class="banner banner--test" id="testbanner" role="status" hidden>
+  <span class="banner__text" id="testbanner-text"></span>
+</div>
+</div>
+
+<main class="layout">
+
+  <!-- ------------------------------------------------------------------ -->
+  <!-- Compose                                                             -->
+  <!-- ------------------------------------------------------------------ -->
+  <section class="card card--compose" aria-labelledby="compose-heading">
+    <h2 id="compose-heading" class="card__heading">New announcement</h2>
+
+    <form id="compose-form" novalidate>
+      <label class="field__label" for="text">What should be announced?</label>
+      <textarea
+        id="text"
+        name="text"
+        class="field__input"
+        rows="5"
+        maxlength="500"
+        autocomplete="off"
+        spellcheck="true"
+        aria-describedby="counter spoken-help"></textarea>
+
+      <div class="counter" id="counter" aria-live="off">0 / 500 characters</div>
+
+      <div class="spoken" id="spoken-block" hidden>
+        <div class="spoken__label" id="spoken-help">This is exactly what will be spoken:</div>
+        <p class="spoken__text" id="spoken-text"></p>
+        <p class="spoken__warnings" id="spoken-warnings" hidden></p>
+      </div>
+
+      <!-- No chime chooser: the school uses one chime for every announcement,
+           set by PA_DEFAULT_CHIME. One less decision for someone in a hurry. -->
+      <div class="options">
+        <div class="options__item options__item--check">
+          <input type="checkbox" id="priority" class="field__check">
+          <label for="priority" class="field__checklabel">
+            Priority
+            <span class="field__hint">Jumps the queue. Use for early dismissal, buses, safety.</span>
+          </label>
+        </div>
+      </div>
+
+      <p class="queueinfo" id="queueinfo"></p>
+
+      <div class="actions" id="actions-send">
+        <button type="submit" class="btn btn--send" id="send">Send announcement</button>
+        <!-- Preview plays in THIS browser only. It never reaches the PA. -->
+        <button type="button" class="btn btn--quiet" id="preview">Preview in my browser</button>
+      </div>
+      <p class="preview-note" id="preview-note" hidden></p>
+
+      <!-- Confirmation step. Shows the spoken text one more time, because the
+           only thing standing between a typo and 400 students hearing it is
+           this panel. -->
+      <div class="confirm" id="confirm" hidden>
+        <p class="confirm__lead">This will play over the whole building:</p>
+        <p class="confirm__text" id="confirm-text"></p>
+        <div class="actions">
+          <button type="button" class="btn btn--send" id="confirm-yes">Yes, announce it</button>
+          <button type="button" class="btn btn--quiet" id="confirm-no">Go back</button>
+        </div>
+      </div>
+    </form>
+
+    <p class="notice" id="attribution">
+      Every announcement is recorded against your account, with the time and
+      the full text.
+    </p>
+  </section>
+
+  <!-- ------------------------------------------------------------------ -->
+  <!-- Live state                                                          -->
+  <!-- ------------------------------------------------------------------ -->
+  <section class="card card--live" aria-labelledby="live-heading">
+    <h2 id="live-heading" class="card__heading">Right now</h2>
+
+    <div class="nowplaying" id="nowplaying">
+      <p class="nowplaying__idle">Nothing is playing.</p>
+    </div>
+
+    <h3 class="card__subheading">Waiting to play</h3>
+    <ul class="queue" id="queue">
+      <li class="queue__empty">The queue is empty.</li>
+    </ul>
+
+    <div class="problems" id="problems" hidden>
+      <h3 class="card__subheading card__subheading--alert">Did not play</h3>
+      <ul class="problems__list" id="problems-list"></ul>
+    </div>
+
+    <h3 class="card__subheading">Recently sent</h3>
+    <ul class="history" id="history">
+      <li class="history__empty">Nothing yet.</li>
+    </ul>
+
+    <div class="tools">
+      <button type="button" class="btn btn--quiet" id="test-audio">
+        Check the speakers
+      </button>
+      <span class="tools__hint">Plays a chime only. No announcement.</span>
+    </div>
+  </section>
+
+</main>
+
+<!-- Shown when an account is still on its issued password. The first-run
+     administrator gets the extra name and username fields, because that
+     account belongs to the system until a real person claims it. -->
+<div class="overlay" id="password-overlay" hidden>
+  <div class="card overlay__card" role="dialog" aria-modal="true"
+       aria-labelledby="password-title">
+    <h2 class="overlay__title" id="password-title">Choose your own password</h2>
+    <p class="overlay__lead" id="password-lead">
+      Announcements are recorded against your name, so your account needs a
+      password only you know.
+    </p>
+
+    <div class="banner banner--error signin__error" id="password-error" role="alert" hidden>
+      <span id="password-error-text"></span>
+    </div>
+
+    <form id="password-form" novalidate>
+      <div id="setup-fields" hidden>
+        <label class="field__label" for="setup-name">Your full name</label>
+        <input class="field__input field__input--line" id="setup-name" type="text"
+               autocomplete="name" placeholder="Henry Jess">
+        <p class="field__hint">This is what the school sees in the announcement log.</p>
+
+        <label class="field__label" for="setup-username">Your username</label>
+        <input class="field__input field__input--line" id="setup-username" type="text"
+               autocomplete="username" autocapitalize="none" autocorrect="off"
+               spellcheck="false" placeholder="hjess">
+        <p class="field__hint">What you type to sign in. Letters, numbers, dots and dashes.</p>
+      </div>
+
+      <label class="field__label" for="current-password">The password you were given</label>
+      <input class="field__input field__input--line" id="current-password"
+             type="password" autocomplete="current-password" required>
+
+      <label class="field__label" for="new-password">Your new password</label>
+      <input class="field__input field__input--line" id="new-password"
+             type="password" autocomplete="new-password" required>
+      <p class="field__hint">At least 10 characters. A short phrase works well.</p>
+
+      <div class="actions">
+        <button type="submit" class="btn btn--send" id="password-save">Save my password</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="/static/app.js?v=__VERSION__"></script>
+</body>
+</html>

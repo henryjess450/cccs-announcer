@@ -1,0 +1,9 @@
+# Runtime dependencies. This list is short on purpose -- every entry is
+# something a school IT person may have to troubleshoot in three years.
+#
+# Versions are pinned so a reinstall in 2029 produces the same system that was
+# tested today. To move them, bump one line at a time and run the test suite.
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+sounddevice==0.5.6
+numpy==2.5.2
