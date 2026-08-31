@@ -15,7 +15,7 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
-function Step($number, $text) { Write-Host ("  [{0}/6] {1}" -f $number, $text) }
+function Step($number, $text) { Write-Host ("  [{0}/7] {1}" -f $number, $text) }
 function Ok()                  { Write-Host "        OK." -ForegroundColor Green }
 function Note($text)           { Write-Host ("        " + $text) -ForegroundColor Yellow }
 
@@ -181,6 +181,72 @@ try {
     Write-Host ""
     Write-Host "    $rule" -ForegroundColor Yellow
     Write-Host ""
+}
+
+# -------------------------------------------------------- 7. Code updates
+# Linking the folder to the code repository means ANNOUNCER.bat can pull
+# fixes by itself from then on. This is the one place a GitHub sign-in can
+# be asked for, because somebody is standing here.
+Step 7 "Setting up automatic code updates..."
+
+$repoUrl = 'https://github.com/henryjess450/cccs-announcer.git'
+
+if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+    Note "Git is not installed. Downloading it..."
+    try {
+        $release = Invoke-RestMethod -UseBasicParsing `
+            -Uri 'https://api.github.com/repos/git-for-windows/git/releases/latest'
+        $asset = $release.assets |
+            Where-Object { $_.name -like '*-64-bit.exe' -and $_.name -notlike '*Portable*' } |
+            Select-Object -First 1
+        if (-not $asset) { throw "no installer found" }
+
+        $gitInstaller = Join-Path $env:TEMP $asset.name
+        Invoke-WebRequest -UseBasicParsing -Uri $asset.browser_download_url -OutFile $gitInstaller
+        Note "Installing Git. Windows may ask for permission."
+        Start-Process -FilePath $gitInstaller -Wait -ArgumentList '/VERYSILENT', '/NORESTART', '/NOCANCEL', '/SP-'
+        Remove-Item $gitInstaller -ErrorAction SilentlyContinue
+
+        # PATH has not refreshed in this process.
+        $gitExe = Join-Path $env:ProgramFiles 'Git\cmd\git.exe'
+        if (Test-Path $gitExe) { $env:Path = "$env:Path;" + (Split-Path $gitExe) }
+    } catch {
+        Note "Could not install Git. Automatic updates will be off."
+        Note "Everything else works; you would update by copying files over."
+    }
+}
+
+if (Get-Command git -ErrorAction SilentlyContinue) {
+    if (Test-Path (Join-Path $root '.git')) {
+        Note "Already linked to the code repository."
+        Ok
+    } else {
+        Write-Host ""
+        Write-Host "        The announcer can keep itself up to date from GitHub."
+        Write-Host "        This is a PRIVATE repository, so you have to sign in once."
+        Write-Host "        A browser window may open. It only has to be done here, once."
+        Write-Host ""
+        $answer = Read-Host "        Set that up now? (Y/n)"
+        if ($answer -eq '' -or $answer -match '^[Yy]') {
+            try {
+                & git init --quiet
+                & git remote remove origin 2>$null | Out-Null
+                & git remote add origin $repoUrl
+                & git fetch origin --quiet
+                if ($LASTEXITCODE -ne 0) { throw "could not reach the repository" }
+                # Ignored files -- data\, .env, piper\, voices\ -- are untouched.
+                & git reset --hard origin/main --quiet
+                & git branch --set-upstream-to=origin/main main 2>$null | Out-Null
+                Ok
+            } catch {
+                Note "Could not link to the repository. Automatic updates are off."
+                Note "Everything else works. You can try again by running:"
+                Note "    powershell -ExecutionPolicy Bypass -File scripts\setup.ps1"
+            }
+        } else {
+            Note "Skipped. Automatic updates are off."
+        }
+    }
 }
 
 # ------------------------------------------------------------------- Finish

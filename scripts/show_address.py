@@ -18,18 +18,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from app.config import load_config  # noqa: E402
-from app.netinfo import all_urls, hostname, primary_address, staff_url  # noqa: E402
-
-
-def public_address(timeout: float = 5.0):
-    """The school's address as the internet sees it. Needs internet access."""
-    import json
-    import urllib.request
-    try:
-        with urllib.request.urlopen("https://api.ipify.org?format=json", timeout=timeout) as response:
-            return json.loads(response.read().decode("utf-8")).get("ip")
-    except Exception:
-        return None
+from app.netinfo import (  # noqa: E402
+    all_urls, hostname, primary_address, public_address, staff_url,
+)
 
 
 def main() -> int:
@@ -57,7 +48,7 @@ def main() -> int:
 
     if "--public" in sys.argv:
         print()
-        address = public_address()
+        address = public_address(timeout=6.0)
         if address is None:
             print(" Could not look up the internet address (no internet access?).")
         else:

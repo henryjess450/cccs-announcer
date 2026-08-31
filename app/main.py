@@ -30,7 +30,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Stre
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from .accounts import Accounts, AuthError, ROLE_STAFF, ROLES
+from .accounts import Accounts, AuthError, ROLE_ADMIN, ROLE_STAFF, ROLES
 from .audio import build_audio_backend
 from .audio.base import AudioUnavailable
 from .auth import AppError, load_session, optional_user, require_admin, require_user
@@ -45,7 +45,7 @@ from .db import (
 )
 from .events import Broadcaster, sse_message
 from .logging_setup import configure_logging
-from .netinfo import all_urls, hostname, primary_address, staff_url
+from .netinfo import all_urls, hostname, primary_address, public_address, staff_url
 from .normalize import normalize
 from .player import Player
 from .ratelimit import RateLimiter
@@ -331,6 +331,62 @@ class Services:
         except OSError:
             log.exception("Could not write %s", self.first_login_file)
 
+    def admin_signin_lines(self) -> List[str]:
+        """What to tell the person standing at the machine about signing in.
+
+        Passwords are hashed and cannot be read back -- that is the point of
+        hashing them. So there are only two honest things to print: the
+        first-time password while it still exists, or the list of administrator
+        usernames plus how to issue a new password.
+        """
+        lines: List[str] = []
+        try:
+            pending = self.accounts.setup_pending()
+            admins = [
+                user for user in self.accounts.list_users()
+                if user["role"] == ROLE_ADMIN and user["is_active"]
+            ]
+        except Exception:
+            return ["   (could not read the accounts)"]
+
+        if pending and self.first_login_file.exists():
+            password = ""
+            for line in self.first_login_file.read_text(encoding="utf-8").splitlines():
+                if line.startswith("Password:"):
+                    password = line.split(":", 1)[1].strip()
+            lines += [
+                "   FIRST-TIME SIGN-IN (this account has not been claimed yet):",
+                "",
+                f"        Username:  {self.config.bootstrap_username}",
+                f"        Password:  {password}",
+                "",
+                "   Signing in asks you to choose your own name and password,",
+                "   and these stop working straight away.",
+            ]
+            return lines
+
+        if not admins:
+            return [
+                "   NO ADMINISTRATOR ACCOUNT. Nobody can manage the announcer.",
+                "   Make one with:",
+                "        .venv\\Scripts\\python.exe scripts\\manage_users.py add --admin",
+            ]
+
+        lines.append("   ADMINISTRATOR SIGN-IN:")
+        lines.append("")
+        for user in admins:
+            note = "  (must set a new password)" if user["must_change_password"] else ""
+            locked = "  (LOCKED)" if user["locked_until"] else ""
+            lines.append(f"        {user['username']:<16} {user['display_name']}{note}{locked}")
+        lines += [
+            "",
+            "   Passwords are not stored in a form anyone can read, so they",
+            "   cannot be shown here. To issue a new one:",
+            "",
+            "        .venv\\Scripts\\python.exe scripts\\manage_users.py reset <username>",
+        ]
+        return lines
+
     def print_address_banner(self) -> None:
         """Tell whoever is standing at the machine what to write on the sticky note.
 
@@ -358,9 +414,30 @@ class Services:
             f"   On this computer:  http://localhost:{port}",
             f"   By name:           http://{hostname()}:{port}",
             "",
-            "   That is a local address on the school network. It is meant to",
-            "   work from staff computers in the building and from nowhere",
-            "   else -- do not forward it through the firewall to the internet.",
+        ]
+
+        # People ask for the public address, so show it -- clearly labelled as
+        # the one NOT to use. Short timeout and silent failure, because the PA
+        # machine may have no internet at all and must still start.
+        public = public_address()
+        if public:
+            lines += [
+                f"   This school's internet address is {public}. That is NOT the",
+                "   address staff use, and the announcer must not be reachable",
+                "   there -- anything on the internet that can reach it can try",
+                "   to talk to the whole school. Use the local address above.",
+                "",
+            ]
+        else:
+            lines += [
+                "   The address above is local to the school network, which is",
+                "   what you want. Do not forward the announcer to the internet.",
+                "",
+            ]
+
+        lines += ["  --------------------------------------------------------------", ""]
+        lines += self.admin_signin_lines()
+        lines += [
             "",
             "   Keep this window open. Closing it stops announcements.",
             "  ==============================================================",

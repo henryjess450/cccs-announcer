@@ -105,3 +105,27 @@ def staff_url(port: int) -> str:
 
 def all_urls(port: int) -> List[str]:
     return [f"http://{address}:{port}" for address in lan_addresses()]
+
+
+def public_address(timeout: float = 2.5) -> Optional[str]:
+    """The address the internet sees this school at.
+
+    Needs internet access, and is NOT the address staff use -- it is shown
+    because people ask for it, and because knowing it is occasionally useful
+    when talking to a network provider. The announcer should never be reachable
+    at it. Returns None rather than raising if there is no internet, so the
+    startup banner still works on an isolated network.
+    """
+    import json
+    import urllib.request
+
+    try:
+        request = urllib.request.Request(
+            "https://api.ipify.org?format=json",
+            headers={"User-Agent": "cccs-announcer"},
+        )
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            address = json.loads(response.read().decode("utf-8")).get("ip")
+            return address or None
+    except Exception:
+        return None

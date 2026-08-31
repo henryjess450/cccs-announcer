@@ -75,6 +75,9 @@ file you ever need. The first time you run it, it:
 4. creates the database and the chimes
 5. makes the announcer start whenever this account signs in
 6. opens the firewall so staff computers can reach it
+7. links the folder to the code repository, so it can pull fixes by itself
+   (this is the one point where it asks you to sign in to GitHub — a browser
+   window may open, and it only happens here, once)
 
 Windows will ask for permission once, for the firewall. Say yes.
 
@@ -88,8 +91,18 @@ staff will use**, like:
 
 **Write that down.** It is what goes on the sticky note in the office.
 
-Every time after this, double-clicking `ANNOUNCER.bat` just starts the
-announcer — the setup part is skipped. It is safe to run whenever you like.
+Every time after this, double-clicking `ANNOUNCER.bat` **pulls the latest code
+and starts the announcer** — the setup part is skipped. It is safe to run
+whenever you like.
+
+Pulling updates can never stop the announcer starting. With no internet, or if
+the GitHub sign-in has expired, it prints one line and carries on with the code
+already there. That matters: a 3 AM reboot with the network down still has to
+end with announcements working at 8 AM.
+
+The window also shows **who can sign in as an administrator** and both
+addresses — the local one staff use, and the school's internet address, which
+is **not** the one to use.
 
 ---
 
@@ -452,6 +465,20 @@ without needing the announcer to be running.
 
 If it says the computer is not on a network, the network cable is out.
 
+### Updates are not being pulled
+
+The window says so when it starts — "could not check", "git is not installed",
+or "not linked to the code repository". None of these stop the announcer
+working; they only mean it is running the code already on the machine.
+
+To fix it, run setup again on the PA machine:
+
+```
+powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
+```
+
+It will offer to install Git and sign in to GitHub.
+
 ### Staff say it worked yesterday and not today
 
 Have one of them press **Ctrl + F5** on the announcement page. If an upgrade
@@ -473,13 +500,22 @@ with the technical reason.
 
 ## Upgrading
 
-1. Note anything you changed in `.env` — you are keeping that file.
-2. Stop the announcer (close its window, or Task Scheduler → **End**).
-3. **Back up `C:\announcer\data`.**
-4. Replace the program files with the new version, **keeping** your `.env` and
-   your `data` folder.
-5. Double-click `ANNOUNCER.bat` again — it skips everything already installed.
-6. Start it and press **Check the speakers**.
+**Normally there is nothing to do.** `ANNOUNCER.bat` pulls the latest code
+every time it starts, so restarting the announcer updates it.
+
+To force it now: close the announcer window and double-click `ANNOUNCER.bat`.
+
+Your settings and data are never touched by an update — `.env`, the database,
+the logs, the chimes, Piper and the voice are all outside what the update
+replaces.
+
+If updates are turned off (no Git, or the folder was copied rather than
+linked), upgrade by hand:
+
+1. Stop the announcer.
+2. **Back up `C:\announcer\data`.**
+3. Replace the program files, **keeping** your `.env` and `data` folder.
+4. Double-click `ANNOUNCER.bat` — it skips everything already installed.
 
 ---
 

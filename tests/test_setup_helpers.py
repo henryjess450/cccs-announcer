@@ -110,3 +110,62 @@ def test_the_announcer_runs_with_no_settings_file_at_all(tmp_path):
     assert config.max_chars == 500
     assert config.rate_limit_count == 5
     assert config.session_idle_minutes == 30
+
+
+# -- what the startup banner tells the installer --------------------------
+
+def test_the_banner_lists_administrators_but_never_a_password(client, app):
+    """Passwords are hashed. The honest thing to print is who the admins are
+    and how to issue a new password -- not a password."""
+    services = app.state.services
+    lines = "\n".join(services.admin_signin_lines())
+
+    assert "ADMINISTRATOR SIGN-IN" in lines
+    assert "alex" in lines                      # the admin account
+    assert "dana" not in lines                  # ordinary staff are not listed
+    assert "cannot be shown here" in lines
+    assert "manage_users.py reset" in lines
+    # The real password must not appear anywhere in it.
+    from tests.conftest import ADMIN_PASSWORD
+    assert ADMIN_PASSWORD not in lines
+
+
+def test_the_banner_shows_the_first_time_password_while_it_exists(fresh_banner_app):
+    services = fresh_banner_app.state.services
+    lines = "\n".join(services.admin_signin_lines())
+
+    assert "FIRST-TIME SIGN-IN" in lines
+    assert "Username:  admin" in lines
+    # This password is not secret yet -- it is printed on the machine's own
+    # screen precisely so somebody can claim the account.
+    password = services.first_login_file.read_text(encoding="utf-8")
+    issued = [l.split(":", 1)[1].strip() for l in password.splitlines()
+              if l.startswith("Password:")][0]
+    assert issued in lines
+
+
+def test_the_banner_warns_when_there_is_no_administrator(client, app):
+    services = app.state.services
+    row = services.accounts.get_by_username("alex")
+    services.db.connect().execute("UPDATE users SET is_active = 0 WHERE id = ?", (row["id"],))
+    lines = "\n".join(services.admin_signin_lines())
+    assert "NO ADMINISTRATOR ACCOUNT" in lines
+    assert "manage_users.py add --admin" in lines
+
+
+def test_the_banner_never_crashes_the_startup(client, app, monkeypatch):
+    """It is decoration. It must not be able to stop the announcer starting."""
+    services = app.state.services
+    monkeypatch.setattr(services.accounts, "list_users",
+                        lambda: (_ for _ in ()).throw(RuntimeError("boom")))
+    lines = services.admin_signin_lines()
+    assert lines and "could not read" in lines[0]
+    services.print_address_banner()   # must not raise
+
+
+@pytest.fixture
+def fresh_banner_app(app):
+    """An app with no accounts, so the first-run administrator is created."""
+    from fastapi.testclient import TestClient
+    with TestClient(app):
+        yield app
