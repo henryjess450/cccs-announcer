@@ -15,7 +15,7 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
-function Step($number, $text) { Write-Host ("  [{0}/7] {1}" -f $number, $text) }
+function Step($number, $text) { Write-Host ("  [{0}/8] {1}" -f $number, $text) }
 function Ok()                  { Write-Host "        OK." -ForegroundColor Green }
 function Note($text)           { Write-Host ("        " + $text) -ForegroundColor Yellow }
 
@@ -143,14 +143,51 @@ if (Test-Path $voiceFile) {
 }
 Ok
 
-# ------------------------------------------------------- 4. Database, chimes
-Step 4 "Creating the database and chimes..."
+# ------------------------------------------------- 4. Visual C++ runtime
+# Piper is built with Microsoft's compiler and needs its runtime. Windows 10
+# does not always have it, and without it piper.exe cannot start at all --
+# it raises a "MSVCP140.dll was not found" dialog and no announcement ever
+# plays. Installing it here means nobody meets that message.
+Step 4 "Checking the Windows components Piper needs..."
+
+$system32 = Join-Path $env:SystemRoot 'System32'
+$haveRuntime = $false
+foreach ($dll in @('msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll')) {
+    if (Test-Path (Join-Path $system32 $dll)) { $haveRuntime = $true; break }
+}
+
+if ($haveRuntime) {
+    Note "Already installed."
+    Ok
+} else {
+    Note "Installing the Microsoft Visual C++ Runtime..."
+    Note "Windows will ask for permission - say Yes."
+    try {
+        $vc = Join-Path $env:TEMP 'vc_redist.x64.exe'
+        Invoke-WebRequest -UseBasicParsing `
+            -Uri 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile $vc
+        Start-Process -FilePath $vc -Wait -Verb RunAs `
+            -ArgumentList '/install', '/quiet', '/norestart'
+        Remove-Item $vc -ErrorAction SilentlyContinue
+        Ok
+    } catch {
+        Note "COULD NOT install it. The voice will not work until you do."
+        Note "Run this in PowerShell, then restart the announcer:"
+        Write-Host ""
+        Write-Host "    iwr https://aka.ms/vs/17/release/vc_redist.x64.exe -OutFile `"`$env:TEMP\vc.exe`"" -ForegroundColor Yellow
+        Write-Host "    Start-Process -Wait `"`$env:TEMP\vc.exe`" -ArgumentList '/install','/quiet','/norestart'" -ForegroundColor Yellow
+        Write-Host ""
+    }
+}
+
+# ------------------------------------------------------- 5. Database, chimes
+Step 5 "Creating the database and chimes..."
 & $venvPython scripts\seed.py | Out-Null
 if ($LASTEXITCODE -ne 0) { Write-Host "   Setup of the data folder failed." -ForegroundColor Red; exit 1 }
 Ok
 
-# ---------------------------------------------------------- 5. Start at logon
-Step 5 "Starting automatically when $env:USERNAME signs in..."
+# ---------------------------------------------------------- 6. Start at logon
+Step 6 "Starting automatically when $env:USERNAME signs in..."
 try {
     & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'install_task.ps1') | Out-Null
     Ok
@@ -159,7 +196,7 @@ try {
     Note "    powershell -ExecutionPolicy Bypass -File scripts\install_task.ps1"
 }
 
-# --------------------------------------------------------------- 6. Firewall
+# --------------------------------------------------------------- 7. Firewall
 # Read the real port rather than assuming 8080, in case .env changed it.
 $port = 8080
 try {
@@ -167,7 +204,7 @@ try {
     if ($reported -match '^\d+$') { $port = [int]$reported }
 } catch { }
 
-Step 6 "Letting staff computers reach it through the firewall..."
+Step 7 "Letting staff computers reach it through the firewall..."
 Note "Windows will ask for permission - say Yes."
 $rule = "New-NetFirewallRule -DisplayName 'CCCS Announcer' -Direction Inbound " +
         "-Protocol TCP -LocalPort $port -Action Allow -Profile Domain,Private " +
@@ -183,11 +220,11 @@ try {
     Write-Host ""
 }
 
-# -------------------------------------------------------- 7. Code updates
+# -------------------------------------------------------- 8. Code updates
 # Linking the folder to the code repository means ANNOUNCER.bat can pull
 # fixes by itself from then on. This is the one place a GitHub sign-in can
 # be asked for, because somebody is standing here.
-Step 7 "Setting up automatic code updates..."
+Step 8 "Setting up automatic code updates..."
 
 $repoUrl = 'https://github.com/henryjess450/cccs-announcer.git'
 

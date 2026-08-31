@@ -374,6 +374,29 @@ help.
 **Announcements are not lost while this is broken.** They are held in the queue
 and play as soon as the speakers come back. Staff see a red banner saying so.
 
+### "MSVCP140.dll was not found", or the voice never works
+
+Piper is built with Microsoft's compiler and needs the **Microsoft Visual C++
+Runtime**, which Windows 10 does not always have. Without it `piper.exe` cannot
+start at all.
+
+Setup installs it. If you saw this anyway, install it by hand — in PowerShell
+on the announcer machine:
+
+```
+iwr https://aka.ms/vs/17/release/vc_redist.x64.exe -OutFile "$env:TEMP\vc.exe"
+Start-Process -Wait "$env:TEMP\vc.exe" -ArgumentList '/install','/quiet','/norestart'
+```
+
+Then restart the announcer. Re-running setup does the same thing:
+
+```
+powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
+```
+
+`/health` reports this before anyone tries to announce: the `tts` section says
+"missing a Windows component".
+
 ### It cannot produce speech
 
 - Check `C:\announcer\voices` still contains **both** the `.onnx` file and the
