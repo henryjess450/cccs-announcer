@@ -21,6 +21,7 @@ import hashlib
 import logging
 import threading
 import time
+from datetime import timedelta
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -42,6 +43,7 @@ from .db import (
     STATE_PLAYING,
     STATE_QUEUED,
     Database,
+    utcnow,
 )
 from .events import Broadcaster, sse_message
 from .logging_setup import configure_logging
@@ -107,6 +109,11 @@ class NewUserRequest(BaseModel):
     username: str
     display_name: str
     role: str = ROLE_STAFF
+
+
+class PurgeRequest(BaseModel):
+    """Clear the announcement log. None means everything that has finished."""
+    older_than_days: Optional[int] = None
 
 
 class UserUpdateRequest(BaseModel):
@@ -965,6 +972,36 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
             ],
             "scope": "everyone" if user.is_admin else "you",
         }
+
+    @app.post("/api/admin/announcements/purge")
+    def api_purge_log(body: PurgeRequest, request: Request) -> Dict[str, Any]:
+        """Clear finished announcements from the log.
+
+        Administrators only, and the clearing is itself recorded in the
+        security trail -- the log is the main thing preventing misuse, so
+        emptying it must leave a mark saying who emptied it.
+        """
+        admin = require_admin(request)
+
+        before = None
+        described = "everything"
+        if body.older_than_days is not None:
+            days = int(body.older_than_days)
+            if days < 0:
+                raise AppError(400, "That is not a number of days.", "bad_range")
+            cutoff = utcnow() - timedelta(days=days)
+            before = cutoff.isoformat(timespec="seconds").replace("+00:00", "Z")
+            described = f"older than {days} day{'s' if days != 1 else ''}"
+
+        removed = services.db.purge_announcements(before=before)
+        services.accounts.record_event(
+            "log.cleared", username=admin.username, user_id=admin.id,
+            ip=client_ip(request), detail=f"{removed} announcement(s), {described}",
+        )
+        log.warning("%s cleared %s announcement(s) from the log (%s)",
+                    admin.username, removed, described)
+        services.publish_status()
+        return {"removed": removed, "scope": described}
 
     # -- admin: accounts ---------------------------------------------------
 

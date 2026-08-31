@@ -223,6 +223,31 @@
     });
   }
 
+  /* --------------------------------------------------- clearing the log */
+
+  el("purge").addEventListener("click", function () {
+    var select = el("purge-range");
+    var days = parseInt(select.value, 10);
+    var wording = days === 0
+      ? "EVERY finished announcement"
+      : "every finished announcement older than " + days + " days";
+
+    if (!window.confirm(
+      "Permanently delete " + wording + " from the log?\n\n" +
+      "This cannot be undone. Anything still waiting or playing is kept."
+    )) { return; }
+
+    post("/api/admin/announcements/purge",
+         days === 0 ? {} : { older_than_days: days })
+      .then(function (data) {
+        showBanner("Removed " + data.removed + " announcement" +
+                   (data.removed === 1 ? "" : "s") + " from the log (" +
+                   data.scope + ").");
+        load();
+      })
+      .catch(function (error) { showBanner(error.message); });
+  });
+
   /* ------------------------------------------------------------- boot */
 
   function load() {

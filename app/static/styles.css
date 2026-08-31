@@ -587,6 +587,27 @@ input:focus-visible {
 
 /* --------------------------------------------------------------- lists */
 
+.subheading-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.linkbtn {
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: .85rem;
+  font-weight: 700;
+  color: var(--brand);
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.linkbtn:hover { color: var(--brand-dark); }
+
 .history { list-style: none; margin: 0; padding: 0; }
 
 .history__item {

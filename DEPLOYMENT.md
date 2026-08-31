@@ -293,6 +293,19 @@ Sign in as an administrator and click **Admin** in the top right.
 The same page shows the **announcement log** — every announcement, who sent it,
 what was actually spoken, what happened to it — and a **sign-in trail**.
 
+### Clearing the list
+
+There are two different "clears", and they do different things:
+
+| Where | What it does |
+|---|---|
+| **Clear** on the announcement page, next to *Recently sent* | Hides that list **on that computer only**. Nothing is deleted. Handy after testing. Other people's screens are unaffected, and the log keeps everything. |
+| **Clear** on the Admin page, under the announcement log | **Permanently deletes** announcement records. Administrators only. Anything still waiting or playing is kept. |
+
+Clearing the log from the Admin page is itself recorded in the sign-in trail,
+with your name and how many records went. The log is the main thing that makes
+every announcement attributable, so emptying it always leaves a mark.
+
 Worth knowing:
 
 - **Staff can stop their own announcements. Administrators can stop anyone's.**
@@ -380,19 +393,18 @@ Piper is built with Microsoft's compiler and needs the **Microsoft Visual C++
 Runtime**, which Windows 10 does not always have. Without it `piper.exe` cannot
 start at all.
 
-Setup installs it. If you saw this anyway, install it by hand — in PowerShell
-on the announcer machine:
+**Easiest fix:** double-click `ANNOUNCER.bat`. It notices the runtime is
+missing and offers to install it. (It gives up waiting after 15 seconds and
+carries on, so it never blocks an unattended restart.)
+
+**Or by hand**, in PowerShell. These two work from any folder:
 
 ```
 iwr https://aka.ms/vs/17/release/vc_redist.x64.exe -OutFile "$env:TEMP\vc.exe"
 Start-Process -Wait "$env:TEMP\vc.exe" -ArgumentList '/install','/quiet','/norestart'
 ```
 
-Then restart the announcer. Re-running setup does the same thing:
-
-```
-powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
-```
+Then restart the announcer.
 
 `/health` reports this before anyone tries to announce: the `tts` section says
 "missing a Windows component".
@@ -501,6 +513,26 @@ computer's speakers and never touches the PA. Worth showing every new staff
 member — it is the difference between a mispronounced surname being heard by
 one person and by four hundred.
 
+### "The argument 'scripts\...' to the -File parameter does not exist"
+
+You are in the wrong folder. Anything starting `scripts\` is relative to the
+announcer folder, so change to it first:
+
+```
+cd C:\announcer
+```
+
+If the announcer went into your own profile instead (which happens when the
+account cannot write to the root of `C:`), it is:
+
+```
+cd %USERPROFILE%\announcer
+```
+
+The window the announcer runs in prints its own folder at the top, and
+`ANNOUNCER.bat` sets the folder for you — which is why almost everything is
+better done by double-clicking that instead.
+
 ### What address do I give staff?
 
 Double-click **`show-address.bat`** on the PA machine. It prints the address
@@ -514,9 +546,11 @@ The window says so when it starts — "could not check", "git is not installed",
 or "not linked to the code repository". None of these stop the announcer
 working; they only mean it is running the code already on the machine.
 
-To fix it, run setup again on the PA machine:
+To fix it, run setup again on the PA machine. **Change to the announcer folder
+first** — the command below uses a path relative to it:
 
 ```
+cd C:\announcer
 powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 ```
 
@@ -593,9 +627,10 @@ python -m venv .venv
 The announcer finds `piper\piper.exe` and the voice in `voices\` by itself, so
 there is nothing to configure.
 
-**Start at sign-in:**
+**Start at sign-in** (from the announcer folder):
 
 ```
+cd C:\announcer
 powershell -ExecutionPolicy Bypass -File scripts\install_task.ps1
 ```
 

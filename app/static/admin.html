@@ -87,6 +87,27 @@
       Every announcement, who sent it, what was spoken, and what happened.
       Searching, date filters and CSV export arrive with the full admin panel.
     </p>
+    <div class="inline-form">
+      <div>
+        <label class="field__label" for="purge-range">Clear the log</label>
+        <select class="field__select" id="purge-range">
+          <option value="30">Older than 30 days</option>
+          <option value="7">Older than 7 days</option>
+          <option value="0">Everything that has finished</option>
+        </select>
+      </div>
+      <div>
+        <button type="button" class="btn btn--stop btn--small" id="purge">Clear</button>
+      </div>
+      <div style="flex: 2 1 100%">
+        <p class="field__hint" style="margin:0">
+          This permanently deletes announcement records. Anything still waiting
+          or playing is kept. Clearing the log is itself recorded below, with
+          your name.
+        </p>
+      </div>
+    </div>
+
     <div class="table-wrap">
       <table class="grid" id="log">
         <thead>

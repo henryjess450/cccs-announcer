@@ -39,6 +39,7 @@
   var nowPlayingEl  = el("nowplaying");
   var queueEl       = el("queue");
   var historyEl     = el("history");
+  var clearHistory  = el("clear-history");
   var problemsEl    = el("problems");
   var problemsList  = el("problems-list");
   var testBtn       = el("test-audio");
@@ -67,6 +68,27 @@
   var normalizeTimer = null;
   var latestNormalized = "";
   var previewAudio = null;
+
+  // "Clear" on the Recently sent list hides everything sent before this
+  // moment, on this computer only. It deliberately does NOT delete anything:
+  // the announcement log is the audit trail, and one person tidying their
+  // screen must not erase the record. Administrators can genuinely clear the
+  // log from the Admin page, and that is recorded.
+  var HISTORY_CLEARED_KEY = "cccs.history-cleared-at";
+
+  function historyClearedAt() {
+    try {
+      return window.localStorage.getItem(HISTORY_CLEARED_KEY) || "";
+    } catch (error) {
+      return "";   // private browsing, or site data blocked
+    }
+  }
+
+  function setHistoryClearedAt(value) {
+    try {
+      window.localStorage.setItem(HISTORY_CLEARED_KEY, value);
+    } catch (error) { /* the list simply will not stay hidden; harmless */ }
+  }
 
   /* ------------------------------------------------------------------ */
   /* small helpers                                                       */
@@ -451,14 +473,18 @@
   function refreshHistory() {
     request("/api/announcements?limit=6").then(function (data) {
       historyEl.innerHTML = "";
+      var hiddenBefore = historyClearedAt();
       var items = (data.announcements || []).filter(function (item) {
-        return item.state !== "queued" && item.state !== "playing";
+        if (item.state === "queued" || item.state === "playing") { return false; }
+        return !hiddenBefore || item.created_at > hiddenBefore;
       }).slice(0, 5);
+
+      clearHistory.hidden = !items.length;
 
       if (!items.length) {
         var empty = document.createElement("li");
         empty.className = "history__empty";
-        empty.textContent = "Nothing yet.";
+        empty.textContent = hiddenBefore ? "Cleared." : "Nothing yet.";
         historyEl.appendChild(empty);
         return;
       }
@@ -556,6 +582,11 @@
     }).then(function () {
       setTimeout(function () { testBtn.disabled = false; }, 1500);
     });
+  });
+
+  clearHistory.addEventListener("click", function () {
+    setHistoryClearedAt(new Date().toISOString().replace(/\.\d+Z$/, "Z"));
+    refreshHistory();
   });
 
   signoutBtn.addEventListener("click", function () {

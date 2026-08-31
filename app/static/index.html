@@ -129,7 +129,12 @@
       <ul class="problems__list" id="problems-list"></ul>
     </div>
 
-    <h3 class="card__subheading">Recently sent</h3>
+    <div class="subheading-row">
+      <h3 class="card__subheading">Recently sent</h3>
+      <!-- Hides the list on THIS computer only. The announcement log itself
+           is the audit trail and is never touched by this. -->
+      <button type="button" class="linkbtn" id="clear-history">Clear</button>
+    </div>
     <ul class="history" id="history">
       <li class="history__empty">Nothing yet.</li>
     </ul>

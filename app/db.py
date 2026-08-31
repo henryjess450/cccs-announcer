@@ -364,6 +364,24 @@ class Database:
         ).fetchall()
         return {r["state"]: int(r["n"]) for r in rows}
 
+    def purge_announcements(self, *, before: Optional[str] = None) -> int:
+        """Delete finished announcements from the log.
+
+        Never touches anything queued or playing -- deleting a row out from
+        under the player would lose an announcement somebody is waiting to
+        hear.
+
+        This is the audit trail, so the deletion itself is recorded as a
+        security event by the caller: who cleared it, when, and how much.
+        """
+        sql = "DELETE FROM announcements WHERE state NOT IN (?, ?)"
+        params: List[Any] = [STATE_QUEUED, STATE_PLAYING]
+        if before:
+            sql += " AND created_at < ?"
+            params.append(before)
+        cursor = self.connect().execute(sql, params)
+        return int(cursor.rowcount)
+
     # -- speaking-rate estimate ---------------------------------------------
 
     def record_speech_rate(self, chars: int, seconds: float) -> None:

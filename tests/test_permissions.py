@@ -204,3 +204,89 @@ def test_the_log_keeps_the_raw_text_and_the_spoken_text(client, app):
     assert entry["user_name"] == "Dana Rowe"
     assert entry["state"] == STATE_DONE
     assert entry["duration_seconds"] > 0
+
+
+# -- clearing the log ------------------------------------------------------
+
+def test_an_administrator_can_clear_the_whole_log(admin_client, app):
+    services = app.state.services
+    admin_client.post("/api/announcements", json={"text": "One."})
+    admin_client.post("/api/announcements", json={"text": "Two."})
+    assert wait_until(lambda: drained(services), timeout=60)
+    assert len(admin_client.get("/api/announcements").json()["announcements"]) == 2
+
+    response = admin_client.post("/api/admin/announcements/purge", json={})
+    assert response.status_code == 200
+    assert response.json()["removed"] == 2
+    assert admin_client.get("/api/announcements").json()["announcements"] == []
+
+
+def test_clearing_never_removes_something_still_waiting(admin_client, app):
+    """Deleting a row out from under the player would lose an announcement
+    somebody is standing there waiting to hear."""
+    services = app.state.services
+    services.audio.available = False          # nothing can drain
+    held = admin_client.post("/api/announcements", json={"text": "Still waiting."}).json()
+
+    removed = admin_client.post("/api/admin/announcements/purge", json={}).json()["removed"]
+    assert removed == 0
+    assert services.db.get(held["id"]) is not None
+
+
+def test_clearing_only_old_entries_keeps_the_recent_ones(admin_client, app):
+    services = app.state.services
+    admin_client.post("/api/announcements", json={"text": "Today."})
+    assert wait_until(lambda: drained(services), timeout=60)
+
+    # Nothing here is older than a day, so nothing should go.
+    assert admin_client.post(
+        "/api/admin/announcements/purge", json={"older_than_days": 1}
+    ).json()["removed"] == 0
+    assert len(admin_client.get("/api/announcements").json()["announcements"]) == 1
+
+    # Backdate it and try again.
+    services.db.connect().execute(
+        "UPDATE announcements SET created_at = '2020-01-01T00:00:00Z'"
+    )
+    assert admin_client.post(
+        "/api/admin/announcements/purge", json={"older_than_days": 1}
+    ).json()["removed"] == 1
+
+
+def test_staff_cannot_clear_the_log(client):
+    """The log is what makes every announcement attributable. Someone who
+    misused it must not be able to erase the evidence."""
+    response = client.post("/api/admin/announcements/purge", json={})
+    assert response.status_code == 403
+    assert response.json()["reason"] == "not_admin"
+
+
+def test_clearing_the_log_is_itself_recorded(admin_client, app):
+    services = app.state.services
+    admin_client.post("/api/announcements", json={"text": "Will be cleared."})
+    assert wait_until(lambda: drained(services), timeout=60)
+    admin_client.post("/api/admin/announcements/purge", json={})
+
+    events = [e for e in services.accounts.recent_events() if e["event"] == "log.cleared"]
+    assert events, "clearing the audit log left no trace"
+    assert events[0]["username"] == "alex"
+    assert "1 announcement" in events[0]["detail"]
+    assert "everything" in events[0]["detail"]
+
+
+def test_a_negative_range_is_refused(admin_client):
+    response = admin_client.post(
+        "/api/admin/announcements/purge", json={"older_than_days": -5}
+    )
+    assert response.status_code == 400
+
+
+def test_the_compose_page_clear_only_hides(client):
+    """The Clear on the compose page must not be able to delete anything --
+    it is a per-computer view setting, not an admin action."""
+    page = client.get("/").text
+    assert 'id="clear-history"' in page
+    script = client.get("/static/app.js").text
+    assert "localStorage" in script
+    # It must not call any delete or purge endpoint.
+    assert "purge" not in script

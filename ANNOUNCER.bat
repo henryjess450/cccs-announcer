@@ -134,7 +134,42 @@ REM  prints a line and carries on.
 echo.
 powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\update.ps1"
 
-REM ---- 3. Start ------------------------------------------------------
+REM ---- 3. Is the Windows component Piper needs still there? ---------
+REM  Piper cannot start without the Visual C++ Runtime. Setup installs it,
+REM  but a machine set up before that, or one where the install was
+REM  refused, would fail on every announcement with a message nobody can
+REM  act on. Check every start.
+REM
+REM  The prompt gives up after 15 seconds and carries on, so a reboot at
+REM  3 AM with nobody watching is never left waiting for an answer.
+if exist "%SystemRoot%\System32\msvcp140.dll" goto ready
+if exist "%SystemRoot%\System32\vcruntime140.dll" goto ready
+
+echo.
+echo  ==================================================================
+echo   A WINDOWS COMPONENT IS MISSING
+echo.
+echo   The announcement voice needs the Microsoft Visual C++ Runtime.
+echo   Without it, announcements will not play.
+echo  ==================================================================
+echo.
+choice /c YN /t 15 /d N /m "  Install it now (Y/N, carries on in 15 seconds)"
+if errorlevel 2 goto skipped_runtime
+
+powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\fix_runtime.ps1"
+goto ready
+
+:skipped_runtime
+echo.
+echo   Skipped. Announcements will not play until it is installed.
+echo   Run these two lines in PowerShell, from any folder:
+echo.
+echo     iwr https://aka.ms/vs/17/release/vc_redist.x64.exe -OutFile "$env:TEMP\vc.exe"
+echo     Start-Process -Wait "$env:TEMP\vc.exe" -ArgumentList '/install','/quiet','/norestart'
+echo.
+
+REM ---- 4. Start ------------------------------------------------------
+:ready
 if not exist ".venv\Scripts\python.exe" (
     echo.
     echo   Something is missing. Delete the .venv folder and run this again.
