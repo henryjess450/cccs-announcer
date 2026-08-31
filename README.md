@@ -9,8 +9,9 @@ browser-only preview, on top of the Phase 1 core loop (compose → queue → chi
 → speech → speakers, with the single-playback guarantee, live status, stop, and
 loud failures).
 
-If you are installing this on the PA machine: copy the folder over and
-double-click **`ANNOUNCER.bat`**. It installs everything, sets the machine up,
+If you are installing this on the PA machine: download the single file
+**`ANNOUNCER.bat`** from this repository and double-click it. It fetches
+everything else itself. It installs everything, sets the machine up,
 pulls the latest code, and starts the announcer — printing the sign-in details
 and the address staff should use. **[DEPLOYMENT.md](DEPLOYMENT.md)** covers the two
 settings it cannot do for you. This file is for developing on it.

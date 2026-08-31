@@ -15,7 +15,7 @@ type an announcement, and this machine speaks it out of the speakers.
 
 - [Before you start](#before-you-start)
 - [Step 1 — Plug the audio in](#step-1--plug-the-audio-in)
-- [Step 2 — Double-click ANNOUNCER.bat](#step-2--double-click-announcerbat)
+- [Step 2 — Download and run ANNOUNCER.bat](#step-2--download-and-run-announcerbat)
 - [Step 3 — Sign in and claim the admin account](#step-3--sign-in-and-claim-the-admin-account)
 - [Step 4 — Make it switch on and sign in by itself](#step-4--make-it-switch-on-and-sign-in-by-itself)
 - [Step 5 — Pull the plug and check](#step-5--pull-the-plug-and-check)
@@ -61,29 +61,40 @@ type an announcement, and this machine speaks it out of the speakers.
 
 ---
 
-## Step 2 — Double-click ANNOUNCER.bat
+## Step 2 — Download and run ANNOUNCER.bat
 
-Copy the announcer folder to the machine — somewhere simple and permanent like
-`C:\announcer`. Not the Desktop or Documents; those move and get cleaned up.
+**Download one file: `ANNOUNCER.bat`.**
 
-Then **double-click `ANNOUNCER.bat`** and leave it alone. That is the only
-file you ever need. The first time you run it, it:
+1. On the PA machine, open
+   <https://github.com/henryjess450/cccs-announcer> and sign in to GitHub.
+   (The repository is private, so you have to be signed in to see it.)
+2. Click **`ANNOUNCER.bat`** in the file list, then the **download** button
+   (the ⤓ icon, top right of the file view).
+3. **Double-click the downloaded file.**
+
+That is it. It downloads the rest of the announcer into `C:\announcer`,
+installs everything, and starts up. It asks you to sign in to GitHub once along
+the way, and Windows will ask for permission once or twice — say yes.
+
+> If a standard (non-administrator) account cannot create `C:\announcer`, it
+> uses a folder in your own profile instead and tells you which. Either is
+> fine; just use the path it prints from then on.
+
+Once it has downloaded, **run `ANNOUNCER.bat` from that folder** in future, not
+the one in Downloads. You can delete the downloaded copy.
+
+The first run:
 
 1. installs Python if it is missing
-2. sets up the announcer
+2. sets the announcer up
 3. downloads the speech engine and voice (about 85 MB)
 4. creates the database and the chimes
 5. makes the announcer start whenever this account signs in
 6. opens the firewall so staff computers can reach it
 7. links the folder to the code repository, so it can pull fixes by itself
-   (this is the one point where it asks you to sign in to GitHub — a browser
-   window may open, and it only happens here, once)
 
-Windows will ask for permission once, for the firewall. Say yes.
-
-Then it starts the announcer. The black window stays open — that window *is*
-the announcer, and closing it stops announcements. It prints **the address
-staff will use**, like:
+Then it starts. The black window stays open — that window *is* the announcer,
+and closing it stops announcements. It prints **the address staff will use**:
 
 ```
         http://192.168.1.42:8080
@@ -103,6 +114,15 @@ end with announcements working at 8 AM.
 The window also shows **who can sign in as an administrator** and both
 addresses — the local one staff use, and the school's internet address, which
 is **not** the one to use.
+
+### If the download does not work
+
+Get the whole thing as a ZIP instead:
+
+1. Open <https://github.com/henryjess450/cccs-announcer> (signed in).
+2. Green **Code** button → **Download ZIP**.
+3. Unzip it to `C:\announcer`.
+4. Double-click `C:\announcer\ANNOUNCER.bat`.
 
 ---
 
