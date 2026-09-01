@@ -57,6 +57,15 @@
   var pwTitle       = el("password-title");
   var pwLead        = el("password-lead");
   var setupFields   = el("setup-fields");
+  var setupChimes   = el("setup-chimes");
+  var myChimeLabel  = el("my-chime-label");
+  var changeChime   = el("change-chime");
+  var chimeOverlay  = el("chime-overlay");
+  var changeChimes  = el("change-chimes");
+  var chimeSave     = el("chime-save");
+  var chimeCancel   = el("chime-cancel");
+  var chimeError    = el("chime-error");
+  var chimeErrorTxt = el("chime-error-text");
   var setupName     = el("setup-name");
   var setupUsername = el("setup-username");
 
@@ -68,6 +77,8 @@
   var normalizeTimer = null;
   var latestNormalized = "";
   var previewAudio = null;
+  var chimeAudio = null;      // the chime being listened to right now
+  var chimeCatalogue = null;  // fetched once and reused by both pickers
 
   // "Clear" on the Recently sent list hides everything sent before this
   // moment, on this computer only. It deliberately does NOT delete anything:
@@ -247,6 +258,160 @@
     }).then(function () {
       previewBtn.disabled = false;
       updateCounter();
+    });
+  });
+
+  /* ------------------------------------------------------------------ */
+  /* choosing an announcement sound                                      */
+  /* ------------------------------------------------------------------ */
+
+  function stopChimeAudio() {
+    if (!chimeAudio) { return; }
+    chimeAudio.pause();
+    chimeAudio = null;
+    var playing = document.querySelectorAll('.chime__listen[aria-pressed="true"]');
+    for (var i = 0; i < playing.length; i++) {
+      playing[i].setAttribute("aria-pressed", "false");
+      playing[i].textContent = "Listen";
+    }
+  }
+
+  function listenTo(key, button) {
+    // Already playing this one? Treat the button as a stop.
+    var wasThisOne = button.getAttribute("aria-pressed") === "true";
+    stopChimeAudio();
+    if (wasThisOne) { return; }
+
+    button.setAttribute("aria-pressed", "true");
+    button.textContent = "Stop";
+    chimeAudio = new Audio("/api/chimes/" + encodeURIComponent(key) + "/audio");
+    chimeAudio.addEventListener("ended", stopChimeAudio);
+    chimeAudio.addEventListener("error", stopChimeAudio);
+    chimeAudio.play().catch(stopChimeAudio);
+  }
+
+  function loadChimes() {
+    if (chimeCatalogue) { return Promise.resolve(chimeCatalogue); }
+    return request("/api/chimes").then(function (data) {
+      chimeCatalogue = data;
+      return data;
+    });
+  }
+
+  /**
+   * Render the list of sounds into `container`. `name` keeps the two pickers'
+   * radio groups apart, since both exist in the page at once.
+   */
+  function renderChimePicker(container, name, chosen) {
+    return loadChimes().then(function (data) {
+      container.innerHTML = "";
+      var selected = chosen || data.default_chime;
+
+      data.chimes.forEach(function (chime) {
+        var row = document.createElement("div");
+        row.className = "chime" + (chime.key === selected ? " chime--chosen" : "");
+
+        var id = name + "-" + chime.key;
+
+        var radio = document.createElement("input");
+        radio.type = "radio";
+        radio.name = name;
+        radio.value = chime.key;
+        radio.id = id;
+        radio.className = "chime__radio";
+        radio.checked = chime.key === selected;
+        radio.addEventListener("change", function () {
+          var rows = container.querySelectorAll(".chime");
+          for (var i = 0; i < rows.length; i++) {
+            rows[i].className = "chime";
+          }
+          row.className = "chime chime--chosen";
+        });
+        row.appendChild(radio);
+
+        var body = document.createElement("div");
+        body.className = "chime__body";
+
+        var label = document.createElement("label");
+        label.className = "chime__name";
+        label.htmlFor = id;
+        label.textContent = chime.label;
+        var length = document.createElement("span");
+        length.className = "chime__length";
+        length.textContent = "  " + chime.seconds.toFixed(1) + " seconds";
+        label.appendChild(length);
+        body.appendChild(label);
+
+        if (chime.description) {
+          var what = document.createElement("p");
+          what.className = "chime__what";
+          what.textContent = chime.description;
+          body.appendChild(what);
+        }
+        row.appendChild(body);
+
+        var listen = document.createElement("button");
+        listen.type = "button";
+        listen.className = "chime__listen";
+        listen.setAttribute("aria-pressed", "false");
+        listen.textContent = "Listen";
+        listen.addEventListener("click", function () { listenTo(chime.key, listen); });
+        row.appendChild(listen);
+
+        container.appendChild(row);
+      });
+      return data;
+    }).catch(function () {
+      container.textContent = "Could not load the sounds.";
+      return null;
+    });
+  }
+
+  function chosenChime(container, name) {
+    var picked = container.querySelector('input[name="' + name + '"]:checked');
+    return picked ? picked.value : null;
+  }
+
+  function showMyChime(key) {
+    loadChimes().then(function (data) {
+      if (!data) { return; }
+      var wanted = key || data.default_chime;
+      var match = null;
+      data.chimes.forEach(function (chime) {
+        if (chime.key === wanted) { match = chime; }
+      });
+      myChimeLabel.textContent = match
+        ? match.label + (key ? "" : " (the school default)")
+        : wanted;
+    }).catch(function () { myChimeLabel.textContent = "\u2014"; });
+  }
+
+  changeChime.addEventListener("click", function () {
+    chimeError.hidden = true;
+    chimeOverlay.hidden = false;
+    renderChimePicker(changeChimes, "change-chime-choice", me && me.chime);
+  });
+
+  function closeChimeOverlay() {
+    stopChimeAudio();
+    chimeOverlay.hidden = true;
+    changeChime.focus();
+  }
+
+  chimeCancel.addEventListener("click", closeChimeOverlay);
+
+  chimeSave.addEventListener("click", function () {
+    var key = chosenChime(changeChimes, "change-chime-choice");
+    chimeSave.disabled = true;
+    post("/api/my-chime", { chime: key }).then(function (data) {
+      if (me) { me.chime = data.chime; }
+      showMyChime(data.chime);
+      closeChimeOverlay();
+    }).catch(function (error) {
+      chimeErrorTxt.textContent = error.message;
+      chimeError.hidden = false;
+    }).then(function () {
+      chimeSave.disabled = false;
     });
   });
 
@@ -572,7 +737,9 @@
 
   // Escape backs out of the confirmation.
   document.addEventListener("keydown", function (event) {
-    if (event.key === "Escape" && !confirmBox.hidden) { closeConfirm(true); }
+    if (event.key !== "Escape") { return; }
+    if (!chimeOverlay.hidden) { closeChimeOverlay(); return; }
+    if (!confirmBox.hidden) { closeConfirm(true); }
   });
 
   testBtn.addEventListener("click", function () {
@@ -612,10 +779,12 @@
       pwSave.textContent = "Set up my account";
       setupFields.hidden = false;
       pwOverlay.hidden = false;
+      renderChimePicker(setupChimes, "setup-chime-choice", me && me.chime);
       setupName.focus();
       return;
     }
     pwOverlay.hidden = false;
+    renderChimePicker(setupChimes, "setup-chime-choice", me && me.chime);
     pwCurrent.focus();
   }
 
@@ -626,14 +795,17 @@
 
     var firstRun = isFirstRunSetup();
     var url = firstRun ? "/api/setup" : "/api/password";
+    var pickedChime = chosenChime(setupChimes, "setup-chime-choice");
     var payload = firstRun ? {
       username: setupUsername.value.trim(),
       display_name: setupName.value.trim(),
       current_password: pwCurrent.value,
-      new_password: pwNew.value
+      new_password: pwNew.value,
+      chime: pickedChime
     } : {
       current_password: pwCurrent.value,
-      new_password: pwNew.value
+      new_password: pwNew.value,
+      chime: pickedChime
     };
 
     post(url, payload).then(function (data) {
@@ -649,8 +821,15 @@
       pwOverlay.hidden = true;
       pwCurrent.value = "";
       pwNew.value = "";
+      stopChimeAudio();
       var wasBlocked = me && (me.must_change_password || firstRun);
-      if (me) { me.must_change_password = false; me.is_bootstrap = false; }
+      if (me) {
+        me.must_change_password = false;
+        me.is_bootstrap = false;
+        if (data && data.chime !== undefined) { me.chime = data.chime; }
+        else if (data && data.user) { me.chime = data.user.chime; }
+      }
+      showMyChime(me && me.chime);
       // Live updates were deliberately not started until now.
       if (wasBlocked) { startLiveUpdates(); } else { textEl.focus(); }
     }).catch(function (error) {
@@ -691,6 +870,7 @@
     maxChars = config.max_chars;
     textEl.setAttribute("maxlength", String(maxChars));
     updateCounter();
+    showMyChime(config.my_chime);
     if (me.must_change_password) {
       // Everything else is refused until the password is changed, including
       // the live-status stream. Opening it now would fail and put a

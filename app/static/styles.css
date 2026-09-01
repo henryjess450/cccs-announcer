@@ -338,6 +338,84 @@ input:focus-visible {
 
 .preview-note--error { color: var(--danger); }
 
+.mysound {
+  margin: 16px 0 0;
+  font-size: .92rem;
+  color: var(--ink-soft);
+}
+
+.mysound strong { color: var(--ink); }
+
+.chimes {
+  margin: 20px 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.chimes__list {
+  margin-top: 10px;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.chime {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.chime:last-child { border-bottom: none; }
+
+.chime--chosen { background: #eef4fb; }
+
+.chime__radio {
+  width: 24px;
+  height: 24px;
+  margin: 2px 0 0;
+  flex: 0 0 auto;
+}
+
+.chime__body { flex: 1 1 auto; min-width: 0; }
+
+.chime__name {
+  font-weight: 700;
+  display: block;
+  cursor: pointer;
+}
+
+.chime__length {
+  font-weight: 400;
+  color: var(--ink-soft);
+  font-size: .85rem;
+}
+
+.chime__what {
+  margin: 2px 0 0;
+  font-size: .88rem;
+  color: var(--ink-soft);
+}
+
+.chime__listen {
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: .85rem;
+  font-weight: 700;
+  background: #fff;
+  color: var(--ink);
+  border: 2px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 14px;
+  min-height: 40px;
+  cursor: pointer;
+}
+
+.chime__listen:hover { background: #eceff2; }
+.chime__listen[aria-pressed="true"] { background: var(--brand); color: #fff; border-color: var(--brand); }
+
 .notice {
   margin: 18px 0 0;
   padding-top: 14px;

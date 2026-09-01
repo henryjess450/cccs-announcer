@@ -102,6 +102,13 @@ class LoginRequest(BaseModel):
 class PasswordRequest(BaseModel):
     current_password: str
     new_password: str
+    #: Optional: staff choose their announcement sound on the same screen.
+    chime: Optional[str] = None
+
+
+class ChimeRequest(BaseModel):
+    """Which sound this person's announcements play. None = the school default."""
+    chime: Optional[str] = None
 
 
 class SetupRequest(BaseModel):
@@ -110,6 +117,7 @@ class SetupRequest(BaseModel):
     display_name: str
     current_password: str
     new_password: str
+    chime: Optional[str] = None
 
 
 class NewUserRequest(BaseModel):
@@ -758,6 +766,12 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
         except ValueError as exc:
             raise AppError(400, str(exc), "invalid_setup")
 
+        if body.chime is not None:
+            chosen = body.chime.strip() or None
+            if chosen is None or services.chimes.path_for(chosen) is not None:
+                services.accounts.set_chime(updated.id, chosen)
+                updated = services.accounts.get(updated.id)
+
         services.clear_first_login_file()
         services.stop_address_announcements()
         log.info("First-run administrator account set up as %r", updated.username)
@@ -781,23 +795,31 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
             raise AppError(400, exc.message, exc.reason)
         except ValueError as exc:
             raise AppError(400, str(exc), "weak_password")
+
+        if body.chime is not None:
+            chosen = body.chime.strip() or None
+            if chosen is not None and services.chimes.path_for(chosen) is None:
+                raise AppError(400, "That sound isn't available.", "no_such_chime")
+            services.accounts.set_chime(user.id, chosen)
+
         log.info("%s changed their password", user.username)
-        return {"changed": True}
+        return {"changed": True, "chime": services.accounts.get(user.id).chime}
 
     # -- compose-screen data -----------------------------------------------
 
     @app.get("/api/config")
     def api_config(request: Request) -> Dict[str, Any]:
         user = require_user(request)
-        chime = services.chimes.get(services.config.default_chime)
+        chime = services.chimes.get(user.chime or services.config.default_chime)
         return {
             "max_chars": services.config.max_chars,
             "default_chime": services.config.default_chime,
             # The chime is fixed for the whole school, so the compose screen
             # shows no chooser. The list is still reported for the admin panel
             # and the deployment checklist.
-            "chime_locked": True,
+            "chime_locked": False,
             "chime_label": chime.label if chime else services.config.default_chime,
+            "my_chime": user.chime,
             "chimes": [
                 {"key": c.key, "label": c.label, "seconds": round(c.seconds, 2)}
                 for c in services.chimes.available()
@@ -814,6 +836,50 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
             },
             "version": VERSION,
         }
+
+    @app.get("/api/chimes")
+    def api_chimes(request: Request) -> Dict[str, Any]:
+        """Every sound staff can pick from, with a line about each."""
+        user = require_user(request)
+        return {
+            "chimes": [
+                {
+                    "key": chime.key,
+                    "label": chime.label,
+                    "description": chime.description,
+                    "seconds": round(chime.seconds, 2),
+                }
+                for chime in services.chimes.available()
+            ],
+            "default_chime": services.config.default_chime,
+            "chosen": user.chime,
+        }
+
+    @app.get("/api/chimes/{key}/audio")
+    def api_chime_audio(key: str, request: Request) -> Response:
+        """The sound itself, so it can be listened to before it is chosen.
+
+        Like Preview, this plays in the browser and never touches the PA.
+        """
+        require_user(request)
+        path = services.chimes.path_for(key)
+        if path is None:
+            raise AppError(404, "That sound isn't available.", "no_such_chime")
+        return Response(
+            content=path.read_bytes(),
+            media_type="audio/wav",
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.post("/api/my-chime")
+    def api_set_my_chime(body: ChimeRequest, request: Request) -> Dict[str, Any]:
+        user = require_user(request)
+        chosen = (body.chime or "").strip() or None
+        if chosen is not None and services.chimes.path_for(chosen) is None:
+            raise AppError(400, "That sound isn't available.", "no_such_chime")
+        services.accounts.set_chime(user.id, chosen)
+        log.info("%s chose the %s chime", user.username, chosen or "school default")
+        return {"chime": chosen}
 
     @app.post("/api/normalize")
     def api_normalize(body: NormalizeRequest, request: Request) -> Dict[str, Any]:
@@ -927,9 +993,11 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
                 retry_after_seconds=decision.retry_after_seconds,
             )
 
-        # One chime for the whole school, set by PA_DEFAULT_CHIME. Staff do not
-        # choose a chime, so nothing in the request body may change it.
-        chime_key = services.config.default_chime
+        # The chime comes from the person's account, never from the request
+        # body: a crafted or stale request must not be able to pick a
+        # different sound. Accounts that have not chosen use the school
+        # default from PA_DEFAULT_CHIME.
+        chime_key = user.chime or services.config.default_chime
         if chime_key and services.chimes.path_for(chime_key) is None:
             raise AppError(500, "The chime sound is missing. Tell IT.", "chime_missing")
 
@@ -1030,7 +1098,7 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
         item_id = services.db.enqueue(
             raw_text="(audio test)",
             normalized_text="",
-            chime=services.config.default_chime,
+            chime=user.chime or services.config.default_chime,
             user_name=user.display_name,
             user_id=user.id,
             kind="test",

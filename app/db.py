@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 # Announcement lifecycle. Anything not in {queued, playing} is terminal.
 STATE_QUEUED = "queued"
@@ -136,6 +136,11 @@ _MIGRATIONS = {
     -- password and has not been claimed by a real person, which /health
     -- reports as degraded.
     ALTER TABLE users ADD COLUMN is_bootstrap INTEGER NOT NULL DEFAULT 0;
+    """,
+    4: """
+    -- The chime each person's announcements play. NULL means "use whatever
+    -- PA_DEFAULT_CHIME says", so existing accounts keep working unchanged.
+    ALTER TABLE users ADD COLUMN chime TEXT;
     """,
 }
 

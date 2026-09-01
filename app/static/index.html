@@ -103,6 +103,12 @@
       </div>
     </form>
 
+    <p class="mysound">
+      Your announcement sound:
+      <strong id="my-chime-label">&hellip;</strong>
+      <button type="button" class="linkbtn" id="change-chime">Change</button>
+    </p>
+
     <p class="notice" id="attribution">
       Every announcement is recorded against your account, with the time and
       the full text.
@@ -188,10 +194,42 @@
              type="password" autocomplete="new-password" required>
       <p class="field__hint">At least 10 characters. A short phrase works well.</p>
 
+      <fieldset class="chimes">
+        <legend class="field__label">Your announcement sound</legend>
+        <p class="field__hint">
+          Plays before everything you announce. Press Listen to hear one — it
+          plays on this computer only, never over the speakers.
+        </p>
+        <div id="setup-chimes" class="chimes__list">Loading&hellip;</div>
+      </fieldset>
+
       <div class="actions">
         <button type="submit" class="btn btn--send" id="password-save">Save my password</button>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- Changing your announcement sound after the first sign-in. -->
+<div class="overlay" id="chime-overlay" hidden>
+  <div class="card overlay__card" role="dialog" aria-modal="true"
+       aria-labelledby="chime-title">
+    <h2 class="overlay__title" id="chime-title">Your announcement sound</h2>
+    <p class="overlay__lead">
+      This plays before everything you announce. Press Listen to hear one —
+      it plays on this computer only, never over the speakers.
+    </p>
+
+    <div class="banner banner--error signin__error" id="chime-error" role="alert" hidden>
+      <span id="chime-error-text"></span>
+    </div>
+
+    <div id="change-chimes" class="chimes__list">Loading&hellip;</div>
+
+    <div class="actions">
+      <button type="button" class="btn btn--send" id="chime-save">Save</button>
+      <button type="button" class="btn btn--quiet" id="chime-cancel">Cancel</button>
+    </div>
   </div>
 </div>
 

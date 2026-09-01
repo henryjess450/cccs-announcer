@@ -15,10 +15,10 @@ def drained(services) -> bool:
 
 # -- compose-screen data ---------------------------------------------------
 
-def test_config_reports_the_fixed_chime_and_the_single_zone(client):
+def test_config_reports_the_chime_and_the_single_zone(client):
     body = client.get("/api/config").json()
-    assert body["chime_locked"] is True
     assert body["default_chime"] == "two_tone_bell"
+    assert body["my_chime"] is None          # nothing chosen yet
     assert body["chime_label"] == "Two-tone bell"
     # The end tone is an output setting, never something staff pick.
     assert "end_tone" not in [chime["key"] for chime in body["chimes"]]
@@ -26,11 +26,11 @@ def test_config_reports_the_fixed_chime_and_the_single_zone(client):
     assert body["max_chars"] == 500
 
 
-def test_the_compose_page_has_no_chime_chooser(client):
-    """One chime for the whole school -- one less decision in a hurry."""
+def test_the_compose_page_still_has_no_chime_chooser(client):
+    """The chime belongs to the account, chosen once. Putting it on the compose
+    screen would be one more decision for somebody in a hurry."""
     page = client.get("/").text
     assert 'id="chime"' not in page
-    assert "<select" not in page
 
 
 def test_the_page_and_its_assets_are_served_locally(client):
@@ -64,9 +64,10 @@ def test_an_overlong_announcement_is_refused(client):
 
 
 def test_a_chime_in_the_request_is_ignored(client, app):
-    """Staff cannot pick a chime, so nothing in the request body may change it."""
+    """The chime comes from the account, never the request body -- a crafted or
+    stale request must not be able to pick a different sound."""
     services = app.state.services
-    for attempted in ("urgent", "attention", "../../../../etc/passwd", ""):
+    for attempted in ("urgent", "fanfare", "../../../../etc/passwd", ""):
         body = client.post("/api/announcements", json={
             "text": "Chime override attempt.", "chime": attempted,
         }).json()
@@ -74,7 +75,7 @@ def test_a_chime_in_the_request_is_ignored(client, app):
     assert wait_until(lambda: drained(services), timeout=60)
 
 
-def test_every_announcement_plays_the_two_tone_bell(client, app):
+def test_announcements_use_the_school_default_until_someone_chooses(client, app):
     services = app.state.services
     client.post("/api/announcements", json={"text": "Routine notice."})
     client.post("/api/announcements", json={"text": "Urgent notice.", "priority": True})

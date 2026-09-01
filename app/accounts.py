@@ -60,6 +60,9 @@ class User:
     #: True while this is the account the system made for itself on first
     #: start and no real person has claimed it yet.
     is_bootstrap: bool = False
+    #: The chime this person's announcements play. None means the school
+    #: default, so an account that has never chosen still works.
+    chime: Optional[str] = None
 
     @property
     def is_admin(self) -> bool:
@@ -74,6 +77,7 @@ class User:
             "is_admin": self.is_admin,
             "must_change_password": self.must_change_password,
             "is_bootstrap": self.is_bootstrap,
+            "chime": self.chime,
         }
 
 
@@ -86,6 +90,7 @@ def _user_from_row(row) -> User:
         is_active=bool(row["is_active"]),
         must_change_password=bool(row["must_change_password"]),
         is_bootstrap=bool(row["is_bootstrap"]) if "is_bootstrap" in row.keys() else False,
+        chime=(row["chime"] if "chime" in row.keys() else None) or None,
     )
 
 
@@ -139,7 +144,7 @@ class Accounts:
     def list_users(self) -> List[Dict[str, Any]]:
         rows = self.db.connect().execute(
             "SELECT id, username, display_name, role, is_active, must_change_password, "
-            "is_bootstrap, created_at, last_login_at, locked_until "
+            "is_bootstrap, chime, created_at, last_login_at, locked_until "
             "FROM users ORDER BY display_name COLLATE NOCASE"
         ).fetchall()
         return [dict(r) for r in rows]
@@ -305,6 +310,16 @@ class Accounts:
             "UPDATE users SET failed_logins = 0, locked_until = NULL WHERE id = ?", (user_id,)
         )
         self.record_event("user.unlocked", user_id=user_id)
+
+    def set_chime(self, user_id: int, chime: Optional[str]) -> None:
+        """Choose the sound this person's announcements play.
+
+        None puts them back on the school default. The caller checks the chime
+        actually exists -- this layer does not know about files.
+        """
+        self.db.connect().execute(
+            "UPDATE users SET chime = ? WHERE id = ?", (chime or None, user_id)
+        )
 
     # -- first run -----------------------------------------------------------
 

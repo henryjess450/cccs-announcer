@@ -183,6 +183,9 @@ scrolled.
 4. Click **Check the speakers**. A chime should come out of the PA. This is
    only a chime, not an announcement, so it is safe to press during the school
    day.
+   - While you are on that screen, the setup box also lets you pick **your
+     announcement sound**, with a **Listen** button for each. Listening plays
+     on your own computer, never over the PA.
 5. Type a test announcement and send it.
 
 **Nothing came out?** → [When it stops working](#when-it-stops-working).
@@ -498,11 +501,31 @@ working chime with no speech means Piper specifically has failed. Check
 
 ### Someone wants a different chime
 
-There is deliberately no chime chooser: every announcement uses the same one,
-so staff have one less decision to make in a hurry. To change it for the whole
-school, set `PA_DEFAULT_CHIME` in `.env` to one of `two_tone_bell`,
-`attention`, `soft_alert`, or `urgent`, and restart. Play each one first with
-**Check the speakers** after changing it.
+Each staff member picks their own. They choose it on the screen where they set
+their password when they first sign in, and can change it any time from
+**Change**, next to *Your announcement sound* on the announcement page. Every
+sound has a **Listen** button that plays it on their own computer, never over
+the speakers.
+
+There are twelve. The longer ones are much better at stopping a corridor:
+
+| Sound | |
+|---|---|
+| **Westminster clock** | The four-note school clock. Everyone already reads it as "listen up". |
+| **Arrival chime** | Warm three-note rise, like an airport. Friendly and hard to miss. |
+| **Fanfare** | Four notes climbing to a held top note. Best at cutting through noise. |
+| **School bell** | Five strikes. Anyone who missed the first still hears the third. |
+| **Double chime** | Ding-dong, twice. |
+| **Xylophone** | Bright and bouncy. Cheerful rather than alarming. |
+| **Sunrise** | A slow climb. Long enough for a room to settle before the words. |
+| **Two-tone bell**, **Attention tone**, **Soft alert** | Short and neutral. |
+| **Alarm pattern**, **Urgent beeps** | Insistent. For things that cannot wait. |
+
+`PA_DEFAULT_CHIME` in `.env` sets what anyone who has not chosen gets.
+
+There is still no chime chooser on the compose screen itself — it belongs to
+the account and is chosen once, so nobody has an extra decision to make while
+standing at the desk in a hurry.
 
 ### Somebody cannot sign in
 
