@@ -65,11 +65,53 @@ from .tts.base import TTSError
 
 log = logging.getLogger(__name__)
 
-VERSION = "2.0.0-phase2"
+VERSION = "2.1.0"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 # How often an idle SSE stream emits a comment frame to stay alive.
 KEEPALIVE_SECONDS = 15.0
+
+# Cache key for the CSS and JavaScript, recomputed whenever they change on
+# disk. This used to be the application version, which only works if somebody
+# remembers to bump it -- and when they forget, browsers keep serving last
+# month's JavaScript against this month's page, which looks like a broken
+# feature rather than a caching problem. A fingerprint of the files
+# themselves cannot be forgotten.
+_fingerprint_cache: Dict[str, str] = {}
+
+
+def static_fingerprint() -> str:
+    """A short token that changes whenever any served asset changes."""
+    assets = sorted(
+        path for path in STATIC_DIR.glob("*.*") if path.suffix in (".js", ".css")
+    )
+    try:
+        # Timestamps are the cheap check for "has anything moved?", but the
+        # token itself comes from the CONTENT. A git pull rewrites timestamps
+        # on every file it touches; if the token followed those, every update
+        # would re-download the CSS and JavaScript even when neither changed.
+        key = "|".join(f"{p.name}:{p.stat().st_mtime_ns}" for p in assets)
+    except OSError:
+        return VERSION
+
+    cached = _fingerprint_cache.get(key)
+    if cached is not None:
+        return cached
+
+    digest = hashlib.sha256()
+    try:
+        for path in assets:
+            digest.update(path.name.encode("utf-8"))
+            digest.update(path.read_bytes())
+    except OSError:
+        return VERSION
+
+    token = digest.hexdigest()[:12]
+    # One entry is all we need; drop the older key.
+    _fingerprint_cache.clear()
+    _fingerprint_cache[key] = token
+    return token
+
 
 # Previews are discarded after this long. They are small, but there is no
 # reason to keep them and no reason to let them accumulate forever.
@@ -634,7 +676,7 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
     def render_page(name: str) -> HTMLResponse:
         html = (STATIC_DIR / name).read_text(encoding="utf-8")
         return HTMLResponse(
-            html.replace("__VERSION__", VERSION),
+            html.replace("__VERSION__", static_fingerprint()),
             headers={"Cache-Control": "no-store, must-revalidate"},
         )
 

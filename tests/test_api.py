@@ -292,3 +292,64 @@ def test_test_mode_is_silent_when_the_real_engines_are_in_use(services, monkeypa
     snapshot = services.build_snapshot()
     assert snapshot["test_mode"]["active"] is False
     assert snapshot["test_mode"]["message"] == ""
+
+
+def test_asset_urls_change_when_the_javascript_changes(client, app):
+    """Version-based cache busting only works if somebody remembers to bump
+    the version. When they forget, browsers serve last month's JavaScript
+    against this month's page and it looks like a broken feature.
+    """
+    import re
+    from app.main import STATIC_DIR
+
+    def token(page: str) -> str:
+        match = re.search(r"/static/app\.js\?v=([^\"']+)", page)
+        assert match, page[:400]
+        return match.group(1)
+
+    before = token(client.get("/").text)
+    assert before == token(client.get("/").text), "the token must be stable"
+
+    script = STATIC_DIR / "app.js"
+    original = script.read_bytes()
+    try:
+        script.write_bytes(original + b"\n// a change\n")
+        after = token(client.get("/").text)
+    finally:
+        script.write_bytes(original)
+
+    assert after != before, "changing app.js must change its cache-busting token"
+
+
+def test_every_page_gets_the_same_fresh_asset_token(client, admin_client):
+    import re
+
+    def token(page: str) -> str:
+        return re.search(r"/static/styles\.css\?v=([^\"']+)", page).group(1)
+
+    assert token(client.get("/").text) == token(admin_client.get("/admin").text)
+    assert "__VERSION__" not in client.get("/").text
+
+
+def test_the_asset_token_follows_content_not_timestamps(client):
+    """A git pull rewrites timestamps on everything it touches. If the token
+    followed those, every update would re-download the CSS and JavaScript even
+    when neither actually changed.
+    """
+    import os
+    import re
+    import time
+    from app.main import STATIC_DIR
+
+    def token() -> str:
+        return re.search(r"/static/app\.js\?v=([^\"']+)", client.get("/").text).group(1)
+
+    before = token()
+    script = STATIC_DIR / "app.js"
+    original = script.stat().st_mtime
+    try:
+        # Same bytes, new timestamp -- exactly what a pull does.
+        os.utime(script, (time.time(), time.time()))
+        assert token() == before
+    finally:
+        os.utime(script, (original, original))

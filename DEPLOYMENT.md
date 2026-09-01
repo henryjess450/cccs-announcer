@@ -674,8 +674,15 @@ It will offer to install Git and sign in to GitHub.
 
 ### Staff say it worked yesterday and not today
 
-Have one of them press **Ctrl + F5** on the announcement page. If an upgrade
-went in, that forces their browser to fetch the new page.
+### A button or option is missing, or does nothing when clicked
+
+Almost always an old copy of the page held in that browser. Press
+**Ctrl + F5** on the announcement page to force a fresh copy.
+
+The announcer stamps its CSS and JavaScript with a fingerprint of their
+contents, so an update normally refreshes them by itself. If a hard refresh
+fixes it and it happens again, tell whoever maintains this — it means the
+fingerprint is not reaching that browser.
 
 ### Reading the log
 

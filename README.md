@@ -236,6 +236,18 @@ Both error types carry two strings: `message` (plain language, shown to staff)
 and `detail` (technical, log only). Keep that split — the whole UI depends on
 never showing a staff member the word "ALSA".
 
+## Static assets and caching
+
+`/` is served `no-store`, and the CSS/JavaScript URLs carry `?v=<fingerprint>`
+where the fingerprint is a hash of those files' **contents**, computed at
+request time and cached against their timestamps.
+
+It used to be the application version, which only works if somebody remembers
+to bump it. When they forget, browsers keep serving last month's JavaScript
+against this month's HTML — which presents as a feature that renders but does
+nothing, not as a caching problem. Do not replace this with a manual version
+string.
+
 ## Conventions
 
 - Boring libraries. Four runtime dependencies, all pinned.
