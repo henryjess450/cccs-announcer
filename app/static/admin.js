@@ -223,6 +223,46 @@
     });
   }
 
+  /* ------------------------------------------------------ this computer */
+
+  function fact(list, label, value, muted) {
+    var dt = document.createElement("dt");
+    dt.textContent = label;
+    list.appendChild(dt);
+    var dd = document.createElement("dd");
+    if (muted) { dd.className = "muted"; }
+    dd.textContent = value;
+    list.appendChild(dd);
+  }
+
+  function renderNetwork(info) {
+    el("staff-url").textContent = info.staff_url;
+
+    var list = el("facts");
+    list.innerHTML = "";
+
+    var others = (info.all_urls || []).filter(function (url) {
+      return url !== info.staff_url;
+    });
+    if (others.length) { fact(list, "Also reachable at", others.join("   ")); }
+
+    fact(list, "Computer name", info.hostname);
+    fact(list, "Speakers", info.audio_device);
+    fact(list, "Voice", info.voice);
+    fact(list, "Version", info.version);
+
+    // Shown because people ask for it, and labelled so nobody uses it by
+    // mistake. The announcer must not be reachable from the internet.
+    if (info.public_address) {
+      fact(list, "School's internet address",
+           info.public_address + "  — not the address to give staff; the " +
+           "announcer should not be reachable there", true);
+    } else {
+      fact(list, "School's internet address",
+           "could not be looked up (no internet access)", true);
+    }
+  }
+
   /* --------------------------------------------------- clearing the log */
 
   el("purge").addEventListener("click", function () {
@@ -251,6 +291,8 @@
   /* ------------------------------------------------------------- boot */
 
   function load() {
+    request("/api/admin/network").then(renderNetwork)
+      .catch(function (e) { showBanner(e.message); });
     request("/api/admin/users").then(function (d) { renderUsers(d.users); })
       .catch(function (e) { showBanner(e.message); });
     request("/api/announcements?limit=50").then(function (d) { renderLog(d.announcements); })

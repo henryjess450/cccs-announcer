@@ -141,6 +141,13 @@ class Config:
     # --- preview ---
     preview_max_concurrent: int
 
+    # --- speaking the address at startup ---
+    # Only while the first administrator account is unclaimed, so this happens
+    # on a brand-new install and never again.
+    announce_address_on_start: bool
+    announce_address_interval_seconds: int
+    announce_address_max_times: int
+
     # --- composing ---
     max_chars: int
     chars_per_second: float    # fallback estimate before we have measurements
@@ -210,6 +217,10 @@ def load_config(env_file: Optional[Path] = None) -> Config:
         rate_limit_count=int(get("PA_RATE_LIMIT_COUNT", "5")),
         rate_limit_window_seconds=int(get("PA_RATE_LIMIT_WINDOW_SECONDS", "600")),
         preview_max_concurrent=int(get("PA_PREVIEW_MAX_CONCURRENT", "2")),
+        announce_address_on_start=_bool(get("PA_ANNOUNCE_ADDRESS_ON_START", "true")),
+        announce_address_interval_seconds=int(
+            get("PA_ANNOUNCE_ADDRESS_INTERVAL_SECONDS", "60")),
+        announce_address_max_times=int(get("PA_ANNOUNCE_ADDRESS_MAX_TIMES", "20")),
         max_chars=int(get("PA_MAX_CHARS", "500")),
         chars_per_second=float(get("PA_CHARS_PER_SECOND", "13.5")),
         single_instance=_bool(get("PA_SINGLE_INSTANCE", "true")),

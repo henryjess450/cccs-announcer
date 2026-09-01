@@ -47,7 +47,14 @@ from .db import (
 )
 from .events import Broadcaster, sse_message
 from .logging_setup import configure_logging
-from .netinfo import all_urls, hostname, primary_address, public_address, staff_url
+from .netinfo import (
+    all_urls,
+    hostname,
+    primary_address,
+    public_address,
+    staff_url,
+    startup_announcement,
+)
 from .normalize import normalize
 from .player import Player
 from .ratelimit import RateLimiter
@@ -151,6 +158,11 @@ class Services:
         # room full of people clicking Preview from starving the player thread
         # of CPU while a real announcement is being produced.
         self.preview_slots = threading.Semaphore(max(1, config.preview_max_concurrent))
+
+        # Speaks the address over the PA while the announcer is waiting to be
+        # set up. Stops the moment somebody claims the administrator account.
+        self._address_thread: Optional[threading.Thread] = None
+        self._stop_address = threading.Event()
 
         self.player = Player(
             config=config,
@@ -458,6 +470,84 @@ class Services:
             )
         print("\n".join(lines), flush=True)
 
+    # -- saying the address out loud --------------------------------------
+
+    def start_address_announcements(self) -> None:
+        """Say the address over the PA until the announcer has been set up.
+
+        The point is that whoever installed this is standing in a corridor with
+        no idea what address to type. Hearing it is faster than walking back to
+        the machine.
+
+        The guards matter more than the feature:
+
+          * It only runs while the first administrator account is UNCLAIMED.
+            That is a brand-new install. Once somebody signs in and sets the
+            account up it stops immediately and never happens again -- not on
+            the next reboot, not a year later.
+          * It stops after a fixed number of repeats even if nobody ever signs
+            in, so a forgotten machine cannot talk over lessons all day.
+          * It goes through the normal queue like anything else, so it can
+            never overlap a real announcement.
+          * PA_ANNOUNCE_ADDRESS_ON_START=false turns it off entirely.
+        """
+        if not self.config.announce_address_on_start:
+            return
+        if not self.accounts.setup_pending():
+            return
+
+        address = primary_address()
+        if address is None:
+            log.info("Not speaking the address: this computer is not on a network")
+            return
+
+        text = startup_announcement(address, self.config.port)
+        interval = max(10, self.config.announce_address_interval_seconds)
+        limit = max(1, self.config.announce_address_max_times)
+
+        def loop() -> None:
+            said = 0
+            while said < limit and not self._stop_address.is_set():
+                # Re-checked every time round: the moment somebody claims the
+                # account, this goes quiet.
+                if not self.accounts.setup_pending():
+                    log.info("Address announcements stopped: the announcer has been set up")
+                    return
+                try:
+                    self.db.enqueue(
+                        raw_text=f"(startup) address {address}:{self.config.port}",
+                        normalized_text=text,
+                        chime=self.config.default_chime,
+                        user_name="Announcer (starting up)",
+                        kind="startup",
+                        estimated_seconds=self.player.estimate_seconds(
+                            text, self.config.default_chime),
+                    )
+                    self.player.notify_new_item()
+                    self.publish_status()
+                except Exception:
+                    log.exception("Could not queue the startup address announcement")
+                    return
+                said += 1
+                self._stop_address.wait(interval)
+
+            if said >= limit:
+                log.warning(
+                    "Stopped saying the address after %s times. The announcer is "
+                    "still not set up -- sign in at %s", said, staff_url(self.config.port),
+                )
+
+        log.warning(
+            "Saying the address over the PA every %ss until the announcer is set up "
+            "(at most %s times)", interval, limit,
+        )
+        self._address_thread = threading.Thread(
+            target=loop, name="pa-address-announcer", daemon=True)
+        self._address_thread.start()
+
+    def stop_address_announcements(self) -> None:
+        self._stop_address.set()
+
     def clear_first_login_file(self) -> None:
         try:
             self.first_login_file.unlink(missing_ok=True)
@@ -490,6 +580,7 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
         services.bootstrap_admin()
         services.player.start()
         services.publish_status()
+        services.start_address_announcements()
         log.info(
             "CCCS Announcer %s ready | audio=%s | tts=%s | accounts=%s | address=%s",
             VERSION, services.audio.describe(), services.tts.describe(),
@@ -500,6 +591,7 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
             yield
         finally:
             log.info("Shutting down; waiting for the current announcement to finish")
+            services.stop_address_announcements()
             services.player.shutdown()
             services.instance_lock.release()
 
@@ -657,6 +749,7 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
             raise AppError(400, str(exc), "invalid_setup")
 
         services.clear_first_login_file()
+        services.stop_address_announcements()
         log.info("First-run administrator account set up as %r", updated.username)
 
         # complete_setup ended every session for this account, including this
@@ -1002,6 +1095,23 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
                     admin.username, removed, described)
         services.publish_status()
         return {"removed": removed, "scope": described}
+
+    @app.get("/api/admin/network")
+    def api_network(request: Request) -> Dict[str, Any]:
+        """What this computer is, and where. Shown on the admin dashboard."""
+        require_admin(request)
+        return {
+            "staff_url": staff_url(services.config.port),
+            "all_urls": all_urls(services.config.port),
+            "hostname": hostname(),
+            "port": services.config.port,
+            # Looked up on request rather than at startup, with a short
+            # timeout, because the PA machine may have no internet.
+            "public_address": public_address(timeout=3.0),
+            "audio_device": services.audio.describe(),
+            "voice": services.tts.describe(),
+            "version": VERSION,
+        }
 
     # -- admin: accounts ---------------------------------------------------
 

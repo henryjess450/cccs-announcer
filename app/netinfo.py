@@ -107,6 +107,38 @@ def all_urls(port: int) -> List[str]:
     return [f"http://{address}:{port}" for address in lan_addresses()]
 
 
+# Spoken digits. "zero" rather than "oh" on purpose: somebody is writing this
+# down off a loudspeaker in a corridor, and "oh" is ambiguous next to letters.
+_SPOKEN_DIGITS = {
+    "0": "zero", "1": "one", "2": "two", "3": "three", "4": "four",
+    "5": "five", "6": "six", "7": "seven", "8": "eight", "9": "nine",
+}
+
+
+def spoken_address(address: str, port: int) -> str:
+    """Turn 10.0.0.106 into something a person can write down by ear.
+
+    Every digit is said separately. "ten point zero point zero point one
+    hundred six" is how people say an address to each other, but it is much
+    harder to transcribe correctly than "one zero, point, zero...".
+    """
+    def digits(value: str) -> str:
+        return " ".join(_SPOKEN_DIGITS[c] for c in value if c in _SPOKEN_DIGITS)
+
+    octets = [digits(part) for part in str(address).split(".") if part]
+    spoken = ", point, ".join(octets)
+    return f"{spoken}, port, {digits(str(port))}"
+
+
+def startup_announcement(address: str, port: int) -> str:
+    """What the PA says while the announcer is waiting to be set up."""
+    return (
+        "Announcement system starting. Its address is "
+        f"{spoken_address(address, port)}. "
+        "Please sign in on a computer to finish setting up."
+    )
+
+
 def public_address(timeout: float = 2.5) -> Optional[str]:
     """The address the internet sees this school at.
 

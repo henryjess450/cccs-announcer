@@ -635,6 +635,40 @@ input:focus-visible {
 
 /* --------------------------------------------------------------- admin */
 
+.bigaddress {
+  margin: 0 0 18px;
+  font-family: ui-monospace, "Cascadia Mono", "Consolas", monospace;
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--brand-dark);
+  overflow-wrap: anywhere;
+}
+
+.factlist {
+  display: grid;
+  grid-template-columns: minmax(140px, max-content) 1fr;
+  gap: 8px 20px;
+  margin: 0;
+  font-size: .92rem;
+}
+
+.factlist dt {
+  color: var(--ink-soft);
+  font-weight: 700;
+}
+
+.factlist dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.factlist dd.muted { color: var(--ink-soft); }
+
+@media (max-width: 620px) {
+  .factlist { grid-template-columns: 1fr; gap: 2px 0; }
+  .factlist dd { margin-bottom: 10px; }
+}
+
 .table-wrap { overflow-x: auto; }
 
 table.grid {

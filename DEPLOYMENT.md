@@ -94,7 +94,22 @@ The first run:
 7. links the folder to the code repository, so it can pull fixes by itself
 
 Then it starts. The black window stays open — that window *is* the announcer,
-and closing it stops announcements. It prints **the address staff will use**:
+and closing it stops announcements.
+
+**It also says its address out loud over the PA**, so you can hear it from
+wherever you are standing:
+
+> "Announcement system starting. Its address is one nine two, point, one six
+> eight, point, one, point, four two, port, eight zero eight zero. Please sign
+> in on a computer to finish setting up."
+
+It repeats every minute **until you sign in and set up the administrator
+account** (step 3), then stops and never does it again — not on the next
+reboot, not a year later. If nobody signs in it gives up after 20 times rather
+than talking over lessons all day. To turn it off, set
+`PA_ANNOUNCE_ADDRESS_ON_START=false` in `.env`.
+
+The window also prints **the address staff will use**:
 
 ```
         http://192.168.1.42:8080
@@ -306,6 +321,10 @@ Sign in as an administrator and click **Admin** in the top right.
 | **Turn off** | Stops the account signing in, ends its sessions at once. Use when someone leaves |
 | **Unlock** | Clears a lockout after too many wrong passwords |
 | **Make admin / Make staff** | Changes what they can do |
+
+The top of the Admin page also shows **This computer** — the address staff
+use, the machine name, which speakers and voice are in use, the version, and
+the school's internet address (labelled as the one *not* to hand out).
 
 The same page shows the **announcement log** — every announcement, who sent it,
 what was actually spoken, what happened to it — and a **sign-in trail**.
@@ -531,6 +550,14 @@ If `list` shows no administrator, make one:
 `false` and the whole health check goes to `degraded` when there is no active
 administrator.
 
+### It keeps announcing its own address over the PA
+
+That only happens while the administrator account has not been set up. Sign in
+and complete the setup screen (step 3) and it stops immediately.
+
+It stops by itself after 20 repeats in any case. To silence it now, set
+`PA_ANNOUNCE_ADDRESS_ON_START=false` in `.env` and restart.
+
 ### Someone says "it says I have sent too many"
 
 That is the rate limit: 5 announcements per 10 minutes for staff. The message
@@ -567,8 +594,12 @@ better done by double-clicking that instead.
 
 ### What address do I give staff?
 
-Double-click **`show-address.bat`** on the PA machine. It prints the address
-without needing the announcer to be running.
+Three ways:
+
+- **Admin page**, at the top, under *This computer*.
+- Double-click **`show-address.bat`** on the PA machine. It works without the
+  announcer running.
+- The announcer prints it in its own window every time it starts.
 
 If it says the computer is not on a network, the network cable is out.
 
