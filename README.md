@@ -61,6 +61,7 @@ Two rules shape everything else:
 | `app/events.py` | SSE fan-out |
 | `app/singleton.py` | Refuses to run two copies against one data folder |
 | `app/netinfo.py` | Works out the LAN address to give staff |
+| `scripts/enable_autostart.ps1` | Sets up and checks unattended restart |
 | `app/accounts.py` | Users, sessions, first-run setup, lockout, security trail |
 | `app/auth.py` | Session, CSRF, and role checks for the web layer |
 | `app/security.py` | Password hashing (stdlib scrypt) and tokens |

@@ -187,13 +187,13 @@ if ($LASTEXITCODE -ne 0) { Write-Host "   Setup of the data folder failed." -For
 Ok
 
 # ---------------------------------------------------------- 6. Start at logon
-Step 6 "Starting automatically when $env:USERNAME signs in..."
+Step 6 "Making it come back on its own after a restart..."
 try {
-    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'install_task.ps1') | Out-Null
-    Ok
+    & powershell -NoProfile -ExecutionPolicy Bypass `
+        -File (Join-Path $PSScriptRoot 'enable_autostart.ps1')
 } catch {
-    Note "COULD NOT set that up. Run this afterwards:"
-    Note "    powershell -ExecutionPolicy Bypass -File scripts\install_task.ps1"
+    Note "COULD NOT finish that. Run this afterwards:"
+    Note "    powershell -ExecutionPolicy Bypass -File scripts\enable_autostart.ps1"
 }
 
 # --------------------------------------------------------------- 7. Firewall
@@ -300,17 +300,17 @@ Write-Host "  ==================================================================
 & $venvPython scripts\show_address.py
 
 Write-Host ""
-Write-Host "   TWO THINGS STILL TO DO. No program is allowed to do these:" -ForegroundColor Yellow
+Write-Host "   ONE THING STILL TO DO. No program is allowed to do it:" -ForegroundColor Yellow
 Write-Host ""
-Write-Host "     A. Make the computer switch itself on when power comes back."
-Write-Host "        Restart, press DEL or F2 for the BIOS, and set"
-Write-Host "        'Restore on AC Power Loss' to 'Power On'. Save and exit."
+Write-Host "     Make the computer switch itself on when power comes back."
+Write-Host "     This is a BIOS setting, not a Windows one. Restart, press"
+Write-Host "     DEL or F2 for the BIOS, and set 'Restore on AC Power Loss'"
+Write-Host "     (or 'After Power Failure') to 'Power On'. Save and exit."
 Write-Host ""
-Write-Host "     B. Make Windows sign in to this account by itself."
-Write-Host "        Press the Windows key, type  netplwiz  and press Enter,"
-Write-Host "        then untick 'Users must enter a user name and password'."
+Write-Host "   To check the rest at any time:"
+Write-Host "     powershell -ExecutionPolicy Bypass -File scripts\enable_autostart.ps1 -Check"
 Write-Host ""
-Write-Host "   DEPLOYMENT.md explains both if you get stuck."
+Write-Host "   DEPLOYMENT.md explains it if you get stuck."
 Write-Host ""
 Read-Host "   Press Enter to start the announcer"
 exit 0

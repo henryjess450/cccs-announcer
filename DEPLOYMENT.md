@@ -178,36 +178,52 @@ scrolled.
 
 ## Step 4 — Make it switch on and sign in by itself
 
-This is the part that means a 3 AM power cut does not become an 8 AM problem.
-It is two settings, and neither can be scripted for you.
+The goal: a power cut at 3 AM does not become a problem at 8 AM.
 
-### A. Switch on when power comes back — a BIOS setting
+Three things have to be true. **Setup already did the first two.** The third is
+a firmware setting, and no program is allowed to change it.
+
+| | What | Done by |
+|---|---|---|
+| 1 | A task starts the announcer when the account signs in | Setup |
+| 2 | Windows signs in to that account by itself | Setup |
+| 3 | The computer switches on when power comes back | **You, in the BIOS** |
+
+To see where you stand, double-click **`check-autostart.bat`**. It reports all
+three and offers to fix 1 and 2 if anything is missing.
+
+### The BIOS setting — you have to do this one
 
 1. Restart the computer and press the BIOS key as it starts — usually **DEL**
    or **F2** (the screen normally says).
-2. Find a setting called **"Restore on AC Power Loss"**, **"After Power
-   Failure"**, or **"AC Back"**. It is usually under Power, ACPI, or Advanced.
+2. Find **"Restore on AC Power Loss"**, **"After Power Failure"**, or **"AC
+   Back"**. Usually under Power, ACPI, or Advanced.
 3. Set it to **Power On**.
 4. Save and exit.
 
-Without this, the machine stays off after a power cut until someone notices.
+Without this the machine stays off after a power cut until somebody notices.
 
-### B. Sign in by itself — a Windows setting
+### About the automatic sign-in
 
-The announcer needs a signed-in Windows session to reach the sound card. (A
-Windows *service* runs in what Windows calls Session 0, which has no access to
-audio — it would start perfectly and never make a sound.)
+Setup uses **Autologon**, a Microsoft tool, which stores the password as an
+encrypted LSA secret rather than as plain text in the registry. You type the
+password into that Microsoft tool; nothing here saves or sends it.
 
-1. Press the Windows key, type **`netplwiz`**, press Enter.
-2. **Untick** "Users must enter a user name and password to use this computer".
-3. Click OK. Enter the `pa` account's password twice.
+> **Why the announcer needs a signed-in desktop at all:** a Windows *service*
+> runs in what Windows calls Session 0, which has **no access to the sound
+> card**. Installed as a service it would start perfectly and never make a
+> sound.
+
+If setup could not do it, do it by hand: press the Windows key, type
+**`netplwiz`**, press Enter, and untick "Users must enter a user name and
+password to use this computer".
 
 > **No tick box?** Recent Windows hides it. Press Windows+R, type `regedit`,
 > and at
 > `HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\PasswordLess\Device`
 > set **`DevicePasswordLessBuildVersion`** to `0`. Then try `netplwiz` again.
 
-### C. Stop it going to sleep
+### Stop it going to sleep
 
 - Settings → System → Power → **Sleep: Never**. (Screen off is fine.)
 - Control Panel → Power Options → Change advanced settings:
@@ -216,15 +232,16 @@ audio — it would start perfectly and never make a sound.)
     speakers go dead until someone unplugs and replugs it.
   - **Turn off hard disk after → Never**.
 
-### D. Then lock the screen
+### Then lock the screen
 
-Automatic sign-in leaves a signed-in Windows session running. **Locking the
-screen does not stop the announcer or the audio** — the session keeps running
-and announcements keep playing. So there is no reason to leave it unlocked:
+Automatic sign-in leaves a signed-in Windows session running, so **anyone who
+can reach the keyboard is inside that account**. Handle it:
 
-- Press **Windows+L** after it starts, or set a screen saver with "On resume,
+- **Locking the screen does not stop the announcer or the audio** — the session
+  keeps running and announcements keep playing. So there is no reason to leave
+  it unlocked. Press **Windows+L**, or set a screen saver with "On resume,
   display logon screen".
-- Keep the `pa` account a **standard user**, not an administrator.
+- Keep the account a **standard user**, not an administrator.
 - Do not sign into email or cloud storage with it, and do not map network
   drives to it.
 - Keep the machine in a locked cupboard or the equipment closet.
@@ -480,6 +497,21 @@ If nobody has signed in yet, look in `C:\announcer\data\FIRST-LOGIN.txt`.
 If that file is gone, the account has already been set up — use the username
 somebody chose. If nothing works, use the command line below.
 
+### It did not come back on after a restart or a power cut
+
+Double-click **`check-autostart.bat`** on the PA machine. It tells you which of
+the three requirements is not met and offers to fix the two it can:
+
+```
+   [ok]   1. A task starts the announcer when pa signs in.
+   [--]   2. Windows stops at the sign-in screen, so nothing starts.
+   [??]   3. The BIOS must switch the computer on when power comes back.
+```
+
+A `[--]` on 1 or 2 is fixable from that screen. A machine that stays switched
+**off** entirely after a power cut is number 3, and that is a BIOS setting —
+see step 4.
+
 ### Nobody at all can sign in
 
 Use the PA machine's keyboard:
@@ -659,6 +691,7 @@ New-NetFirewallRule -DisplayName "CCCS Announcer" -Direction Inbound -Protocol T
 | First-time password | `C:\announcer\data\FIRST-LOGIN.txt` (deletes itself after setup) |
 | Set up AND start (the only file you need) | `ANNOUNCER.bat` |
 | See the staff address | `show-address.bat` |
+| Check it restarts on its own | `check-autostart.bat` |
 | Health check | `<address>/health` |
 | Admin page | `<address>/admin` |
 | Startup task name | `CCCS Announcer` (Task Scheduler) |
