@@ -169,3 +169,20 @@ def fresh_banner_app(app):
     from fastapi.testclient import TestClient
     with TestClient(app):
         yield app
+
+
+# -- announce-mode settings ------------------------------------------------
+
+@pytest.mark.parametrize("value,mode", [
+    ("always", "always"), ("setup", "setup"), ("once", "once"), ("never", "never"),
+    ("true", "always"), ("TRUE", "always"), ("yes", "always"),
+    ("false", "never"), ("off", "never"), ("", "never"), ("nonsense", "never"),
+])
+def test_the_announce_setting_accepts_words_and_plain_true_false(value, mode, monkeypatch, tmp_path):
+    """An older .env carrying =true must keep working."""
+    monkeypatch.setenv("PA_ANNOUNCE_ADDRESS_ON_START", value)
+    assert load_config(env_file=tmp_path / "none.env").announce_address_mode == mode
+
+
+def test_speaking_the_address_is_on_by_default(tmp_path):
+    assert load_config(env_file=tmp_path / "none.env").announce_address_mode == "always"

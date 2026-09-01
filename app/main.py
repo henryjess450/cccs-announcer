@@ -473,27 +473,28 @@ class Services:
     # -- saying the address out loud --------------------------------------
 
     def start_address_announcements(self) -> None:
-        """Say the address over the PA until the announcer has been set up.
+        """Say the address over the PA so it can be heard from a corridor.
 
-        The point is that whoever installed this is standing in a corridor with
-        no idea what address to type. Hearing it is faster than walking back to
-        the machine.
+        PA_ANNOUNCE_ADDRESS_ON_START decides when:
 
-        The guards matter more than the feature:
+          always  every start, repeating until an administrator signs in
+          setup   only while the first administrator account is unclaimed
+          once    one announcement at every start, no repeats
+          never   silent
 
-          * It only runs while the first administrator account is UNCLAIMED.
-            That is a brand-new install. Once somebody signs in and sets the
-            account up it stops immediately and never happens again -- not on
-            the next reboot, not a year later.
-          * It stops after a fixed number of repeats even if nobody ever signs
-            in, so a forgotten machine cannot talk over lessons all day.
-          * It goes through the normal queue like anything else, so it can
-            never overlap a real announcement.
-          * PA_ANNOUNCE_ADDRESS_ON_START=false turns it off entirely.
+        Whichever mode, three limits always apply, because this talks to every
+        classroom in the building:
+
+          * it stops the moment an administrator signs in;
+          * it gives up after PA_ANNOUNCE_ADDRESS_MAX_TIMES repeats, so a
+            forgotten machine cannot talk over lessons all day;
+          * it goes through the normal queue, so it can never overlap a real
+            announcement.
         """
-        if not self.config.announce_address_on_start:
+        mode = self.config.announce_address_mode
+        if mode == "never":
             return
-        if not self.accounts.setup_pending():
+        if mode == "setup" and not self.accounts.setup_pending():
             return
 
         address = primary_address()
@@ -503,16 +504,18 @@ class Services:
 
         text = startup_announcement(address, self.config.port)
         interval = max(10, self.config.announce_address_interval_seconds)
-        limit = max(1, self.config.announce_address_max_times)
+        limit = 1 if mode == "once" else max(1, self.config.announce_address_max_times)
+
+        def still_wanted() -> bool:
+            if self._stop_address.is_set():
+                return False
+            if mode == "setup":
+                return self.accounts.setup_pending()
+            return True
 
         def loop() -> None:
             said = 0
-            while said < limit and not self._stop_address.is_set():
-                # Re-checked every time round: the moment somebody claims the
-                # account, this goes quiet.
-                if not self.accounts.setup_pending():
-                    log.info("Address announcements stopped: the announcer has been set up")
-                    return
+            while said < limit and still_wanted():
                 try:
                     self.db.enqueue(
                         raw_text=f"(startup) address {address}:{self.config.port}",
@@ -529,17 +532,20 @@ class Services:
                     log.exception("Could not queue the startup address announcement")
                     return
                 said += 1
+                if said >= limit:
+                    break
                 self._stop_address.wait(interval)
 
-            if said >= limit:
-                log.warning(
-                    "Stopped saying the address after %s times. The announcer is "
-                    "still not set up -- sign in at %s", said, staff_url(self.config.port),
+            if said >= limit and limit > 1:
+                log.info(
+                    "Stopped saying the address after %s times. Sign in at %s",
+                    said, staff_url(self.config.port),
                 )
 
         log.warning(
-            "Saying the address over the PA every %ss until the announcer is set up "
-            "(at most %s times)", interval, limit,
+            "Saying the address over the PA (mode=%s, every %ss, at most %s times). "
+            "It stops as soon as an administrator signs in.",
+            mode, interval, limit,
         )
         self._address_thread = threading.Thread(
             target=loop, name="pa-address-announcer", daemon=True)
@@ -679,6 +685,10 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
             user, ip=client_ip(request), user_agent=request.headers.get("user-agent"),
         )
         set_session_cookie(response, token)
+        if user.is_admin:
+            # The address announcements exist to get an administrator signed
+            # in. One just did.
+            services.stop_address_announcements()
         log.info("%s signed in from %s", user.username, client_ip(request))
         return {"user": user.public(), "csrf_token": csrf}
 

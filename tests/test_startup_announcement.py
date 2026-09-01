@@ -49,7 +49,8 @@ def test_it_speaks_while_the_announcer_is_waiting_to_be_set_up(config):
     """A brand-new install: nobody knows the address yet."""
     from app.main import Services
     fast = dataclasses.replace(
-        config, announce_address_interval_seconds=10, announce_address_max_times=2)
+        config, announce_address_mode="setup",
+        announce_address_interval_seconds=10, announce_address_max_times=2)
     # Driven directly rather than through the app, to keep the test quick.
     services = Services(fast)
     services.player.start()
@@ -67,14 +68,76 @@ def test_it_speaks_while_the_announcer_is_waiting_to_be_set_up(config):
         services.player.shutdown()
 
 
-def test_it_stays_silent_once_the_announcer_has_been_set_up(client, app):
-    """The common case, and the one that matters: a school that has been
-    running for a year must not start shouting its address after a reboot."""
-    services = app.state.services
+def test_setup_mode_stays_silent_once_the_announcer_has_been_set_up(config):
+    """"setup" is the quiet mode: a school running for a year does not start
+    shouting its address after a reboot."""
+    from app.main import Services
+    quiet = dataclasses.replace(config, announce_address_mode="setup")
+    services = Services(quiet)
+    services.accounts.create_user(
+        username="already", display_name="Already Here", password="a long password",
+        role="admin", must_change_password=False,
+    )
     assert services.accounts.setup_pending() is False
-
     services.start_address_announcements()
-    assert announcements_of_kind(services, "startup") == []
+    assert services._address_thread is None
+
+
+def test_always_mode_speaks_even_when_already_set_up(config):
+    """The loud mode, for a school that wants to hear the address on every
+    restart whether or not the announcer has been set up."""
+    from app.main import Services
+    loud = dataclasses.replace(
+        config, announce_address_mode="always",
+        announce_address_interval_seconds=10, announce_address_max_times=2)
+    services = Services(loud)
+    services.accounts.create_user(
+        username="already", display_name="Already Here", password="a long password",
+        role="admin", must_change_password=False,
+    )
+    services.player.start()
+    try:
+        services.start_address_announcements()
+        assert wait_until(lambda: announcements_of_kind(services, "startup"), timeout=15)
+    finally:
+        services.stop_address_announcements()
+        services.player.shutdown()
+
+
+def test_once_mode_says_it_a_single_time(config):
+    from app.main import Services
+    once = dataclasses.replace(
+        config, announce_address_mode="once", announce_address_interval_seconds=10)
+    services = Services(once)
+    services.player.start()
+    try:
+        services.start_address_announcements()
+        assert wait_until(lambda: announcements_of_kind(services, "startup"), timeout=15)
+        assert wait_until(lambda: not services._address_thread.is_alive(), timeout=15)
+        assert len(announcements_of_kind(services, "startup")) == 1
+    finally:
+        services.stop_address_announcements()
+        services.player.shutdown()
+
+
+def test_an_administrator_signing_in_silences_it(client, app):
+    """Whatever the mode, this is what the announcements were asking for."""
+    services = app.state.services
+    services._stop_address.clear()
+    from tests.conftest import ADMIN_PASSWORD
+    response = client.post(
+        "/api/login", json={"username": "alex", "password": ADMIN_PASSWORD})
+    assert response.status_code == 200
+    assert services._stop_address.is_set()
+
+
+def test_ordinary_staff_signing_in_does_not_silence_it(client, app):
+    """It is asking for an ADMINISTRATOR. A teacher signing in is not that."""
+    services = app.state.services
+    services._stop_address.clear()
+    from tests.conftest import STAFF_PASSWORD
+    client.post("/api/login", json={"username": "dana", "password": STAFF_PASSWORD})
+    assert services._stop_address.is_set() is False
 
 
 def test_claiming_the_account_silences_it(fresh_client, app):
@@ -97,7 +160,7 @@ def test_claiming_the_account_silences_it(fresh_client, app):
 
 def test_it_can_be_turned_off_entirely(config):
     from app.main import Services
-    off = dataclasses.replace(config, announce_address_on_start=False)
+    off = dataclasses.replace(config, announce_address_mode="never")
     services = Services(off)
     services.bootstrap_admin()
     services.start_address_announcements()
@@ -119,7 +182,8 @@ def test_it_gives_up_rather_than_talking_over_lessons_all_day(config):
     """If nobody ever signs in, it must stop by itself."""
     from app.main import Services
     fast = dataclasses.replace(
-        config, announce_address_interval_seconds=10, announce_address_max_times=2)
+        config, announce_address_mode="always",
+        announce_address_interval_seconds=10, announce_address_max_times=2)
     services = Services(fast)
     services.player.start()
     try:
@@ -139,7 +203,8 @@ def test_startup_announcements_go_through_the_normal_queue(config):
     """So they can never overlap a real announcement."""
     from app.main import Services
     fast = dataclasses.replace(
-        config, announce_address_interval_seconds=10, announce_address_max_times=1)
+        config, announce_address_mode="always",
+        announce_address_interval_seconds=10, announce_address_max_times=1)
     services = Services(fast)
     services.player.start()
     try:

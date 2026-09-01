@@ -103,11 +103,23 @@ wherever you are standing:
 > eight, point, one, point, four two, port, eight zero eight zero. Please sign
 > in on a computer to finish setting up."
 
-It repeats every minute **until you sign in and set up the administrator
-account** (step 3), then stops and never does it again — not on the next
-reboot, not a year later. If nobody signs in it gives up after 20 times rather
-than talking over lessons all day. To turn it off, set
-`PA_ANNOUNCE_ADDRESS_ON_START=false` in `.env`.
+It repeats every minute **until an administrator signs in**, then stops. If
+nobody signs in it gives up after 20 times rather than talking over lessons all
+day.
+
+`PA_ANNOUNCE_ADDRESS_ON_START` in `.env` controls when it happens:
+
+| Setting | What it does |
+|---|---|
+| `always` *(default)* | Every start, repeating until an administrator signs in |
+| `once` | One announcement per start, no repeats |
+| `setup` | Only on a brand-new install, until the account is set up |
+| `never` | Silent |
+
+> Worth deciding deliberately: with `always`, a restart in the middle of a
+> lesson announces the address into every classroom until somebody signs in or
+> it hits the limit. `once` gives you one announcement per restart, which is
+> usually enough to catch it.
 
 The window also prints **the address staff will use**:
 
@@ -552,11 +564,29 @@ administrator.
 
 ### It keeps announcing its own address over the PA
 
-That only happens while the administrator account has not been set up. Sign in
-and complete the setup screen (step 3) and it stops immediately.
+Sign in as an administrator — that is what it is asking for, and it stops
+immediately. It also gives up on its own after 20 repeats.
 
-It stops by itself after 20 repeats in any case. To silence it now, set
-`PA_ANNOUNCE_ADDRESS_ON_START=false` in `.env` and restart.
+To change how often it does this, set `PA_ANNOUNCE_ADDRESS_ON_START` in `.env`
+to `once` (one announcement per restart), `setup` (only on a brand-new
+install), or `never`.
+
+### It is not announcing its address at all
+
+Check `PA_ANNOUNCE_ADDRESS_ON_START` in `.env`. If it says `setup`, it only
+speaks on a brand-new install where the administrator account has not been
+claimed — which is deliberate, but not what you want if you expect to hear it
+on every restart. Set it to `always` or `once`.
+
+It also stays silent if the machine has no network address at all, because
+announcing an address that does not exist is worse than saying nothing.
+
+### The announcements are too quiet
+
+The Windows volume is set to 100% on every start. If it is still quiet, the
+loudness needs setting at the **amplifier** — see step 3. Check also that
+Windows is not sending sound to the wrong device: the Admin page shows which
+speakers are in use, under *This computer*.
 
 ### Someone says "it says I have sent too many"
 
@@ -723,6 +753,7 @@ New-NetFirewallRule -DisplayName "CCCS Announcer" -Direction Inbound -Protocol T
 | Set up AND start (the only file you need) | `ANNOUNCER.bat` |
 | See the staff address | `show-address.bat` |
 | Check it restarts on its own | `check-autostart.bat` |
+| Windows volume | set to `PA_SET_SYSTEM_VOLUME` (100%) on every start |
 | Health check | `<address>/health` |
 | Admin page | `<address>/admin` |
 | Startup task name | `CCCS Announcer` (Task Scheduler) |

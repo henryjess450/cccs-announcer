@@ -168,8 +168,14 @@ echo     iwr https://aka.ms/vs/17/release/vc_redist.x64.exe -OutFile "$env:TEMP\
 echo     Start-Process -Wait "$env:TEMP\vc.exe" -ArgumentList '/install','/quiet','/norestart'
 echo.
 
-REM ---- 4. Start ------------------------------------------------------
+REM ---- 4. Turn the Windows volume up --------------------------------
+REM  A PA machine somebody once turned down is a PA machine that
+REM  whispers, and nobody thinks to check a volume slider on a computer
+REM  locked in a cupboard. Loudness is trimmed at the amplifier.
 :ready
+powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\set_volume.ps1"
+
+REM ---- 5. Start ------------------------------------------------------
 if not exist ".venv\Scripts\python.exe" (
     echo.
     echo   Something is missing. Delete the .venv folder and run this again.

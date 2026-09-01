@@ -46,6 +46,20 @@ def _bool(value: str) -> bool:
     return value.strip().lower() in ("1", "true", "yes", "on")
 
 
+# Accepts the plain true/false people expect as well as the named modes, so an
+# older .env carrying PA_ANNOUNCE_ADDRESS_ON_START=true keeps working.
+_ANNOUNCE_MODES = ("always", "setup", "once", "never")
+
+
+def _announce_mode(value: str) -> str:
+    cleaned = value.strip().lower()
+    if cleaned in _ANNOUNCE_MODES:
+        return cleaned
+    if cleaned in ("1", "true", "yes", "on"):
+        return "always"
+    return "never"
+
+
 # ---------------------------------------------------------------------------
 # Finding Piper without being told where it is.
 #
@@ -142,9 +156,11 @@ class Config:
     preview_max_concurrent: int
 
     # --- speaking the address at startup ---
-    # Only while the first administrator account is unclaimed, so this happens
-    # on a brand-new install and never again.
-    announce_address_on_start: bool
+    #   "always" every start, repeating until an administrator signs in
+    #   "setup"  only while the first administrator account is unclaimed
+    #   "once"   one announcement at every start, no repeats
+    #   "never"  silent
+    announce_address_mode: str
     announce_address_interval_seconds: int
     announce_address_max_times: int
 
@@ -217,7 +233,7 @@ def load_config(env_file: Optional[Path] = None) -> Config:
         rate_limit_count=int(get("PA_RATE_LIMIT_COUNT", "5")),
         rate_limit_window_seconds=int(get("PA_RATE_LIMIT_WINDOW_SECONDS", "600")),
         preview_max_concurrent=int(get("PA_PREVIEW_MAX_CONCURRENT", "2")),
-        announce_address_on_start=_bool(get("PA_ANNOUNCE_ADDRESS_ON_START", "true")),
+        announce_address_mode=_announce_mode(get("PA_ANNOUNCE_ADDRESS_ON_START", "always")),
         announce_address_interval_seconds=int(
             get("PA_ANNOUNCE_ADDRESS_INTERVAL_SECONDS", "60")),
         announce_address_max_times=int(get("PA_ANNOUNCE_ADDRESS_MAX_TIMES", "20")),

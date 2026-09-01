@@ -57,6 +57,8 @@ def config(tmp_path: Path, chime_dir: Path) -> Config:
         # The suite builds many instances; the real guard is tested explicitly
         # in tests/test_singleton.py.
         single_instance=False,
+        # Off by default across the suite; the dedicated tests turn it on.
+        announce_address_mode="never",
         chime_gap_ms=100,
         default_chime="two_tone_bell",
     )
