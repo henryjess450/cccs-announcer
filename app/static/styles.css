@@ -338,6 +338,60 @@ input:focus-visible {
 
 .preview-note--error { color: var(--danger); }
 
+.presets { margin-bottom: 20px; }
+
+.presets__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.preset {
+  font: inherit;
+  font-weight: 700;
+  font-size: .92rem;
+  background: #eef4fb;
+  color: var(--brand-dark);
+  border: 2px solid #c9d9ea;
+  border-radius: 8px;
+  padding: 10px 16px;
+  min-height: 46px;
+  cursor: pointer;
+}
+
+.preset:hover { background: #dfeaf7; }
+
+/* Drills look nothing like the everyday buttons, because pressing one by
+   accident empties a building. */
+.preset--drill {
+  background: #fdecec;
+  color: #7a1414;
+  border-color: #e8b4b4;
+}
+
+.preset--drill:hover { background: #f8dcdc; }
+
+.soundlist { list-style: none; margin: 0 0 8px; padding: 0; }
+
+.sound {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.sound:last-child { border-bottom: none; }
+
+.sound__name { flex: 1 1 auto; font-weight: 700; font-size: .92rem; }
+
+.sound__length {
+  font-weight: 400;
+  color: var(--ink-soft);
+  font-size: .85rem;
+}
+
 .mysound {
   margin: 16px 0 0;
   font-size: .92rem;

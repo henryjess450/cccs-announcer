@@ -50,6 +50,14 @@
   <section class="card card--compose" aria-labelledby="compose-heading">
     <h2 id="compose-heading" class="card__heading">New announcement</h2>
 
+    <!-- Ready-made announcements. The point is that the things said every
+         day, and the things said under pressure, are never composed on the
+         spot. -->
+    <div class="presets" id="presets" hidden>
+      <p class="field__label">Ready-made</p>
+      <div class="presets__row" id="presets-row"></div>
+    </div>
+
     <form id="compose-form" novalidate>
       <label class="field__label" for="text">What should be announced?</label>
       <textarea
@@ -147,6 +155,9 @@
     <ul class="history" id="history">
       <li class="history__empty">Nothing yet.</li>
     </ul>
+
+    <h3 class="card__subheading" id="sounds-heading" hidden>Sounds</h3>
+    <ul class="soundlist" id="sounds" hidden></ul>
 
     <div class="tools">
       <button type="button" class="btn btn--quiet" id="test-audio">
@@ -260,6 +271,31 @@
       <button type="button" class="btn btn--send" id="chime-save">Save</button>
       <button type="button" class="btn btn--quiet" id="chime-cancel">Cancel</button>
     </div>
+  </div>
+</div>
+
+<!-- Filling in a ready-made announcement before it goes out. -->
+<div class="overlay" id="preset-overlay" hidden>
+  <div class="card overlay__card" role="dialog" aria-modal="true"
+       aria-labelledby="preset-title">
+    <h2 class="overlay__title" id="preset-title"></h2>
+    <p class="overlay__lead" id="preset-lead"></p>
+
+    <div class="banner banner--error signin__error" id="preset-error" role="alert" hidden>
+      <span id="preset-error-text"></span>
+    </div>
+
+    <form id="preset-form" novalidate>
+      <div id="preset-slots"></div>
+
+      <p class="field__label">This is exactly what will be spoken</p>
+      <blockquote class="spoken__text" id="preset-preview"></blockquote>
+
+      <div class="actions">
+        <button type="submit" class="btn btn--send" id="preset-send">Announce it</button>
+        <button type="button" class="btn btn--quiet" id="preset-cancel">Cancel</button>
+      </div>
+    </form>
   </div>
 </div>
 

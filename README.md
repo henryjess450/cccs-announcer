@@ -62,6 +62,8 @@ Two rules shape everything else:
 | `app/singleton.py` | Refuses to run two copies against one data folder |
 | `app/netinfo.py` | Works out the LAN address to give staff |
 | `app/schedules.py` | School time vs UTC, and when a schedule next fires |
+| `app/presets.py` | Ready-made announcements, slots, and the seed drills |
+| `app/sounds.py` | Sound clips: storing, converting, and fetching |
 | `scripts/enable_autostart.ps1` | Sets up and checks unattended restart |
 | `app/accounts.py` | Users, sessions, first-run setup, lockout, security trail |
 | `app/auth.py` | Session, CSRF, and role checks for the web layer |

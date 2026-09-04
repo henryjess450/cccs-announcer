@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 # Announcement lifecycle. Anything not in {queued, playing} is terminal.
 STATE_QUEUED = "queued"
@@ -189,6 +189,40 @@ _MIGRATIONS = {
     CREATE INDEX IF NOT EXISTS idx_schedule_due
         ON schedules (enabled, next_run_at);
     """,
+    8: """
+    -- Ready-made announcements with fill-in slots, so nobody retypes
+    -- "Bus number 12 has arrived" for the four hundredth time.
+    CREATE TABLE IF NOT EXISTS presets (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        created_at  TEXT    NOT NULL,
+        title       TEXT    NOT NULL,
+        body        TEXT    NOT NULL,   -- {slots} are filled in when used
+        chime       TEXT,
+        priority    INTEGER NOT NULL DEFAULT 0,
+        is_drill    INTEGER NOT NULL DEFAULT 0,
+        -- Drills default to administrators only. A practice lockdown should
+        -- come from the office, not from whoever is nearest a keyboard.
+        admin_only  INTEGER NOT NULL DEFAULT 0,
+        sort_order  INTEGER NOT NULL DEFAULT 100,
+        enabled     INTEGER NOT NULL DEFAULT 1
+    );
+
+    -- Sound clips that play over the PA instead of speech.
+    CREATE TABLE IF NOT EXISTS sounds (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        created_at TEXT    NOT NULL,
+        title      TEXT    NOT NULL,
+        filename   TEXT    NOT NULL,    -- inside data/sounds, never a path
+        seconds    REAL    NOT NULL,
+        source     TEXT,                -- where it came from
+        added_by   TEXT,
+        chime      TEXT,                -- optional chime before it
+        enabled    INTEGER NOT NULL DEFAULT 1
+    );
+
+    -- An announcement that plays a file rather than synthesised speech.
+    ALTER TABLE announcements ADD COLUMN sound_file TEXT;
+    """,
 }
 
 
@@ -288,14 +322,15 @@ class Database:
         zone: str = "all",
         kind: str = "announcement",
         estimated_seconds: Optional[float] = None,
+        sound_file: Optional[str] = None,
     ) -> int:
         cursor = self.connect().execute(
             "INSERT INTO announcements "
             "(created_at, user_id, user_name, kind, raw_text, normalized_text, chime, "
-            " zone, priority, state, estimated_seconds) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            " zone, priority, state, estimated_seconds, sound_file) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             (now_iso(), user_id, user_name, kind, raw_text, normalized_text, chime,
-             zone, 1 if priority else 0, STATE_QUEUED, estimated_seconds),
+             zone, 1 if priority else 0, STATE_QUEUED, estimated_seconds, sound_file),
         )
         return int(cursor.lastrowid)
 
@@ -433,6 +468,68 @@ class Database:
             params.append(before)
         cursor = self.connect().execute(sql, params)
         return int(cursor.rowcount)
+
+    # -- presets and sounds ---------------------------------------------------
+
+    def presets(self, include_disabled: bool = False) -> List[Dict[str, Any]]:
+        sql = "SELECT * FROM presets"
+        if not include_disabled:
+            sql += " WHERE enabled = 1"
+        sql += " ORDER BY is_drill ASC, sort_order ASC, id ASC"
+        return [dict(r) for r in self.connect().execute(sql).fetchall()]
+
+    def get_preset(self, preset_id: int) -> Optional[Dict[str, Any]]:
+        row = self.connect().execute(
+            "SELECT * FROM presets WHERE id = ?", (preset_id,)).fetchone()
+        return dict(row) if row else None
+
+    def add_preset(self, **fields: Any) -> int:
+        columns = ", ".join(fields)
+        markers = ", ".join("?" for _ in fields)
+        cursor = self.connect().execute(
+            f"INSERT INTO presets (created_at, {columns}) VALUES (?, {markers})",
+            (now_iso(), *fields.values()),
+        )
+        return int(cursor.lastrowid)
+
+    def update_preset(self, preset_id: int, **fields: Any) -> None:
+        if not fields:
+            return
+        assignments = ", ".join(f"{name} = ?" for name in fields)
+        self.connect().execute(
+            f"UPDATE presets SET {assignments} WHERE id = ?",
+            (*fields.values(), preset_id))
+
+    def delete_preset(self, preset_id: int) -> bool:
+        return self.connect().execute(
+            "DELETE FROM presets WHERE id = ?", (preset_id,)).rowcount > 0
+
+    def sounds(self, include_disabled: bool = False) -> List[Dict[str, Any]]:
+        sql = "SELECT * FROM sounds"
+        if not include_disabled:
+            sql += " WHERE enabled = 1"
+        sql += " ORDER BY title COLLATE NOCASE"
+        return [dict(r) for r in self.connect().execute(sql).fetchall()]
+
+    def get_sound(self, sound_id: int) -> Optional[Dict[str, Any]]:
+        row = self.connect().execute(
+            "SELECT * FROM sounds WHERE id = ?", (sound_id,)).fetchone()
+        return dict(row) if row else None
+
+    def add_sound(self, **fields: Any) -> int:
+        columns = ", ".join(fields)
+        markers = ", ".join("?" for _ in fields)
+        cursor = self.connect().execute(
+            f"INSERT INTO sounds (created_at, {columns}) VALUES (?, {markers})",
+            (now_iso(), *fields.values()),
+        )
+        return int(cursor.lastrowid)
+
+    def delete_sound(self, sound_id: int) -> Optional[Dict[str, Any]]:
+        sound = self.get_sound(sound_id)
+        if sound is not None:
+            self.connect().execute("DELETE FROM sounds WHERE id = ?", (sound_id,))
+        return sound
 
     # -- schedules -----------------------------------------------------------
 

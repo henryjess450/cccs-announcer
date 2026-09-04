@@ -263,6 +263,155 @@
     }
   }
 
+  /* ------------------------------------------------------ sound clips */
+
+  function renderSounds(data) {
+    el("sound-limits").textContent =
+      "Up to " + Math.round(data.max_seconds / 60) + " minutes and " +
+      data.max_mb + " MB each.";
+    el("sound-link-form").hidden = !data.can_fetch_links;
+    el("sound-link-unavailable").hidden = data.can_fetch_links;
+
+    var body = el("sounds-body");
+    body.innerHTML = "";
+    if (!data.sounds.length) {
+      var empty = document.createElement("tr");
+      var td = document.createElement("td");
+      td.colSpan = 5;
+      td.className = "history__empty";
+      td.textContent = "No sounds yet.";
+      empty.appendChild(td);
+      body.appendChild(empty);
+      return;
+    }
+
+    data.sounds.forEach(function (sound) {
+      var row = document.createElement("tr");
+      cell(row, sound.title, "wrap");
+      cell(row, sound.seconds.toFixed(1) + "s");
+      cell(row, sound.source === "uploaded" ? "Uploaded" : sound.source, "wrap");
+      cell(row, sound.added_by || "—");
+
+      var actions = document.createElement("td");
+      actions.appendChild(button("Listen", function () {
+        var audio = new Audio("/api/sounds/" + sound.id + "/audio");
+        audio.play();
+      }));
+      actions.appendChild(button("Delete", function () {
+        if (!window.confirm("Delete \u201c" + sound.title + "\u201d?")) { return; }
+        post("/api/admin/sounds/" + sound.id + "/delete")
+          .then(load).catch(function (e) { showBanner(e.message); });
+      }));
+      row.appendChild(actions);
+      body.appendChild(row);
+    });
+  }
+
+  el("sound-upload").addEventListener("submit", function (event) {
+    event.preventDefault();
+    var file = el("sound-file").files[0];
+    if (!file) { showBanner("Choose a sound file first."); return; }
+
+    var form = new FormData();
+    form.append("file", file);
+    form.append("title", el("sound-title").value);
+
+    el("sound-add").disabled = true;
+    // Not the JSON helper: this one posts a file.
+    fetch("/api/admin/sounds", {
+      method: "POST",
+      headers: { "X-CSRF-Token": csrfToken },
+      body: form
+    }).then(function (response) {
+      return response.json().catch(function () { return {}; }).then(function (data) {
+        if (!response.ok) { throw new Error(data.detail || "That did not work."); }
+        return data;
+      });
+    }).then(function () {
+      el("sound-file").value = "";
+      el("sound-title").value = "";
+      bannerEl.hidden = true;
+      load();
+    }).catch(function (error) {
+      showBanner(error.message);
+    }).then(function () { el("sound-add").disabled = false; });
+  });
+
+  el("sound-link-form").addEventListener("submit", function (event) {
+    event.preventDefault();
+    var url = el("sound-url").value.trim();
+    if (!url) { return; }
+    el("sound-fetch").disabled = true;
+    el("sound-fetch").textContent = "Fetching…";
+    post("/api/admin/sounds/from-link", { url: url }).then(function () {
+      el("sound-url").value = "";
+      bannerEl.hidden = true;
+      load();
+    }).catch(function (error) {
+      showBanner(error.message);
+    }).then(function () {
+      el("sound-fetch").disabled = false;
+      el("sound-fetch").textContent = "Fetch";
+    });
+  });
+
+  /* ------------------------------------------- ready-made announcements */
+
+  function renderPresets(presets) {
+    var body = el("presets-body");
+    body.innerHTML = "";
+    presets.forEach(function (preset) {
+      var row = document.createElement("tr");
+      if (!preset.enabled) { row.style.opacity = "0.55"; }
+
+      cell(row, preset.title, "wrap");
+      cell(row, preset.body, "wrap");
+
+      var who = document.createElement("td");
+      if (preset.is_drill) { who.appendChild(tag("Drill", "off")); }
+      else if (preset.admin_only) { who.appendChild(tag("Admin", "admin")); }
+      else { who.appendChild(tag("Everyone")); }
+      row.appendChild(who);
+
+      var actions = document.createElement("td");
+      actions.appendChild(button(preset.enabled ? "Turn off" : "Turn on", function () {
+        post("/api/admin/presets/" + preset.id, {
+          title: preset.title, body: preset.body, chime: preset.chime,
+          priority: preset.priority, is_drill: preset.is_drill,
+          admin_only: preset.admin_only, enabled: !preset.enabled,
+          sort_order: preset.sort_order
+        }).then(load).catch(function (e) { showBanner(e.message); });
+      }));
+      actions.appendChild(button("Delete", function () {
+        if (!window.confirm("Delete \u201c" + preset.title + "\u201d?")) { return; }
+        post("/api/admin/presets/" + preset.id + "/delete")
+          .then(load).catch(function (e) { showBanner(e.message); });
+      }));
+      row.appendChild(actions);
+      body.appendChild(row);
+    });
+  }
+
+  el("preset-form").addEventListener("submit", function (event) {
+    event.preventDefault();
+    var title = el("preset-title").value.trim();
+    var text = el("preset-body").value.trim();
+    if (!title || !text) { showBanner("Give it a name and something to say."); return; }
+
+    el("preset-add").disabled = true;
+    post("/api/admin/presets", {
+      title: title, body: text, is_drill: el("preset-drill").checked
+    }).then(function () {
+      el("preset-title").value = "";
+      el("preset-body").value = "";
+      el("preset-drill").checked = false;
+      bannerEl.hidden = true;
+      load();
+    }).catch(function (error) {
+      showBanner(error.message);
+    }).then(function () { el("preset-add").disabled = false; });
+  });
+
   /* --------------------------------------------------- clearing the log */
 
   el("purge").addEventListener("click", function () {
@@ -292,6 +441,10 @@
 
   function load() {
     request("/api/admin/network").then(renderNetwork)
+      .catch(function (e) { showBanner(e.message); });
+    request("/api/sounds").then(renderSounds)
+      .catch(function (e) { showBanner(e.message); });
+    request("/api/presets").then(function (d) { renderPresets(d.presets); })
       .catch(function (e) { showBanner(e.message); });
     request("/api/admin/users").then(function (d) { renderUsers(d.users); })
       .catch(function (e) { showBanner(e.message); });

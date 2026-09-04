@@ -26,7 +26,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, File, Form, Request, Response, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -59,6 +59,8 @@ from .netinfo import (
 )
 from .normalize import normalize
 from .player import Player
+from .presets import fill, label_for, seed_if_empty, slots_in
+from .sounds import SoundError, SoundLibrary, safe_title
 from .ratelimit import RateLimiter
 from .schedules import (
     KIND_ONCE,
@@ -162,6 +164,28 @@ class PasswordRequest(BaseModel):
     chime: Optional[str] = None
 
 
+class PresetUseRequest(BaseModel):
+    """Use a ready-made announcement, with its slots filled in."""
+    values: Dict[str, str] = {}
+
+
+class PresetSaveRequest(BaseModel):
+    title: str
+    body: str
+    chime: Optional[str] = None
+    priority: bool = False
+    is_drill: bool = False
+    admin_only: bool = False
+    enabled: bool = True
+    sort_order: int = 100
+
+
+class SoundLinkRequest(BaseModel):
+    url: str
+    title: Optional[str] = None
+    chime: Optional[str] = None
+
+
 class ScheduleRequest(BaseModel):
     """An announcement that goes out on a timetable, in school time."""
     text: str
@@ -231,6 +255,16 @@ class Services:
         self.accounts = Accounts(self.db, config)
         self.rate_limiter = RateLimiter(self.db, config)
         self.chimes = ChimeLibrary(config.chime_dir)
+        self.sounds = SoundLibrary(
+            config.sound_dir,
+            max_seconds=config.sound_max_seconds,
+            max_bytes=config.sound_max_mb * 1024 * 1024,
+            ffmpeg=config.ffmpeg_binary,
+            ytdlp=config.ytdlp_binary,
+        )
+        seeded = seed_if_empty(self.db)
+        if seeded:
+            log.info("Added %s ready-made announcements to start with", seeded)
         self.tts = build_tts_engine(config)
         self.audio = build_audio_backend(config)
         self.broadcaster = Broadcaster()
@@ -264,6 +298,7 @@ class Services:
             tts=self.tts,
             audio=self.audio,
             chimes=self.chimes,
+            sounds=self.sounds,
             on_change=self.publish_status,
         )
 
@@ -1445,6 +1480,270 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
             "voice": services.tts.describe(),
             "version": VERSION,
         }
+
+    # -- ready-made announcements -------------------------------------------
+
+    def preset_view(row: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "id": row["id"],
+            "title": row["title"],
+            "body": row["body"],
+            "chime": row["chime"],
+            "priority": bool(row["priority"]),
+            "is_drill": bool(row["is_drill"]),
+            "admin_only": bool(row["admin_only"]),
+            "enabled": bool(row["enabled"]),
+            "sort_order": row["sort_order"],
+            "slots": [
+                {"name": name, "label": label_for(name)}
+                for name in slots_in(row["body"])
+            ],
+        }
+
+    @app.get("/api/presets")
+    def api_presets(request: Request) -> Dict[str, Any]:
+        user = require_user(request)
+        rows = services.db.presets(include_disabled=user.is_admin)
+        visible = [
+            preset_view(row) for row in rows
+            if user.is_admin or not row["admin_only"]
+        ]
+        return {"presets": visible, "is_admin": user.is_admin}
+
+    @app.post("/api/presets/{preset_id}/use", status_code=201)
+    def api_use_preset(preset_id: int, body: PresetUseRequest,
+                       request: Request) -> Dict[str, Any]:
+        """Send a ready-made announcement.
+
+        Goes through exactly the same checks as a typed one -- rate limit,
+        length, the person's own sound -- so a preset is a shortcut for typing,
+        not a way around anything.
+        """
+        user = require_user(request)
+        preset = services.db.get_preset(preset_id)
+        if preset is None or not preset["enabled"]:
+            raise AppError(404, "That announcement is no longer available.", "not_found")
+        if preset["admin_only"] and not user.is_admin:
+            raise AppError(
+                403,
+                "Only an administrator can send that one.",
+                "not_admin",
+            )
+
+        try:
+            text = fill(preset["body"], body.values)
+        except KeyError as missing:
+            raise AppError(
+                400,
+                f"Fill in the {label_for(str(missing.args[0])).lower()} first.",
+                "missing_slot",
+            )
+
+        spoken = spoken_text_for(user, text)
+        if not spoken.strip():
+            raise AppError(400, "There is nothing to announce.", "empty")
+
+        decision = services.rate_limiter.check(user)
+        if not decision.allowed:
+            raise AppError(429, decision.message, "rate_limited",
+                           retry_after_seconds=decision.retry_after_seconds)
+
+        chime_key = preset["chime"] or user.chime or services.config.default_chime
+        if services.chimes.path_for(chime_key) is None:
+            chime_key = services.config.default_chime
+
+        item_id = services.db.enqueue(
+            raw_text=text,
+            normalized_text=spoken,
+            chime=chime_key,
+            user_name=user.display_name,
+            user_id=user.id,
+            priority=1 if preset["priority"] else 0,
+            kind="drill" if preset["is_drill"] else "announcement",
+            estimated_seconds=services.player.estimate_seconds(spoken, chime_key),
+        )
+        services.player.notify_new_item()
+        services.publish_status()
+
+        if preset["is_drill"]:
+            # A drill is heard by the whole school and rehearsed by everyone in
+            # it. It belongs in the security trail, not only the announcement log.
+            services.accounts.record_event(
+                "drill.announced", username=user.username, user_id=user.id,
+                ip=client_ip(request), detail=preset["title"],
+            )
+            log.warning("DRILL announced by %s: %s", user.username, preset["title"])
+        else:
+            log.info("%s used the %r announcement", user.username, preset["title"])
+
+        return {"id": item_id, "normalized": spoken}
+
+    @app.post("/api/admin/presets", status_code=201)
+    def api_create_preset(body: PresetSaveRequest, request: Request) -> Dict[str, Any]:
+        require_admin(request)
+        if not body.title.strip() or not body.body.strip():
+            raise AppError(400, "Give it a name and something to say.", "empty")
+        if len(body.body) > services.config.max_chars:
+            raise AppError(400, "That announcement is too long.", "too_long")
+        preset_id = services.db.add_preset(
+            title=body.title.strip(), body=body.body.strip(),
+            chime=(body.chime or "").strip() or None,
+            priority=1 if body.priority else 0,
+            is_drill=1 if body.is_drill else 0,
+            admin_only=1 if (body.admin_only or body.is_drill) else 0,
+            enabled=1 if body.enabled else 0,
+            sort_order=body.sort_order,
+        )
+        return {"preset": preset_view(services.db.get_preset(preset_id))}
+
+    @app.post("/api/admin/presets/{preset_id}")
+    def api_update_preset(preset_id: int, body: PresetSaveRequest,
+                          request: Request) -> Dict[str, Any]:
+        require_admin(request)
+        if services.db.get_preset(preset_id) is None:
+            raise AppError(404, "That announcement no longer exists.", "not_found")
+        services.db.update_preset(
+            preset_id,
+            title=body.title.strip(), body=body.body.strip(),
+            chime=(body.chime or "").strip() or None,
+            priority=1 if body.priority else 0,
+            is_drill=1 if body.is_drill else 0,
+            admin_only=1 if (body.admin_only or body.is_drill) else 0,
+            enabled=1 if body.enabled else 0,
+            sort_order=body.sort_order,
+        )
+        return {"preset": preset_view(services.db.get_preset(preset_id))}
+
+    @app.post("/api/admin/presets/{preset_id}/delete")
+    def api_delete_preset(preset_id: int, request: Request) -> Dict[str, Any]:
+        require_admin(request)
+        return {"deleted": services.db.delete_preset(preset_id)}
+
+    # -- sound clips ---------------------------------------------------------
+
+    def sound_view(row: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "id": row["id"],
+            "title": row["title"],
+            "seconds": round(row["seconds"], 1),
+            "source": row["source"],
+            "added_by": row["added_by"],
+            "chime": row["chime"],
+            "enabled": bool(row["enabled"]),
+        }
+
+    @app.get("/api/sounds")
+    def api_sounds(request: Request) -> Dict[str, Any]:
+        user = require_user(request)
+        rows = services.db.sounds(include_disabled=user.is_admin)
+        return {
+            "sounds": [sound_view(row) for row in rows],
+            "is_admin": user.is_admin,
+            "max_seconds": services.config.sound_max_seconds,
+            "max_mb": services.config.sound_max_mb,
+            # The admin page hides the "from a link" box when the machine
+            # cannot do it, rather than offering something that always fails.
+            "can_fetch_links": bool(
+                services.sounds.ytdlp_path() and services.sounds.ffmpeg_path()),
+            "can_convert": bool(services.sounds.ffmpeg_path()),
+        }
+
+    @app.get("/api/sounds/{sound_id}/audio")
+    def api_sound_audio(sound_id: int, request: Request) -> Response:
+        """The clip itself, for listening in the browser before playing it."""
+        require_user(request)
+        row = services.db.get_sound(sound_id)
+        path = services.sounds.path_for(row["filename"]) if row else None
+        if path is None:
+            raise AppError(404, "That sound isn't available.", "not_found")
+        return Response(content=path.read_bytes(), media_type="audio/wav",
+                        headers={"Cache-Control": "no-store"})
+
+    @app.post("/api/sounds/{sound_id}/play", status_code=201)
+    def api_play_sound(sound_id: int, request: Request) -> Dict[str, Any]:
+        """Play a clip over the PA.
+
+        Queued like an announcement, so it can never overlap one, and logged
+        against the person who played it like everything else.
+        """
+        user = require_user(request)
+        row = services.db.get_sound(sound_id)
+        if row is None or not row["enabled"]:
+            raise AppError(404, "That sound isn't available.", "not_found")
+        if services.sounds.path_for(row["filename"]) is None:
+            raise AppError(500, "That sound file is missing. Tell IT.", "file_missing")
+
+        decision = services.rate_limiter.check(user)
+        if not decision.allowed:
+            raise AppError(429, decision.message, "rate_limited",
+                           retry_after_seconds=decision.retry_after_seconds)
+
+        chime_key = row["chime"] or None
+        item_id = services.db.enqueue(
+            raw_text=f"(sound) {row['title']}",
+            normalized_text="",
+            chime=chime_key,
+            user_name=user.display_name,
+            user_id=user.id,
+            kind="sound",
+            sound_file=row["filename"],
+            estimated_seconds=services.player.estimate_sound_seconds(
+                row["seconds"], chime_key),
+        )
+        services.player.notify_new_item()
+        services.publish_status()
+        log.info("%s played the sound %r", user.username, row["title"])
+        return {"id": item_id}
+
+    @app.post("/api/admin/sounds", status_code=201)
+    async def api_upload_sound(request: Request,
+                               file: UploadFile = File(...),
+                               title: str = Form(""),
+                               chime: str = Form("")) -> Dict[str, Any]:
+        admin = require_admin(request)
+        data = await file.read()
+        try:
+            filename, seconds = services.sounds.add_bytes(data, file.filename or "")
+        except SoundError as exc:
+            log.info("Sound upload refused: %s | %s", exc.message, exc.detail)
+            raise AppError(400, exc.message, "bad_sound")
+
+        sound_id = services.db.add_sound(
+            title=safe_title(title or Path(file.filename or "").stem),
+            filename=filename, seconds=seconds, source="uploaded",
+            added_by=admin.display_name,
+            chime=(chime or "").strip() or None,
+        )
+        log.info("%s added the sound %r (%.1fs)", admin.username, title, seconds)
+        return {"sound": sound_view(services.db.get_sound(sound_id))}
+
+    @app.post("/api/admin/sounds/from-link", status_code=201)
+    def api_sound_from_link(body: SoundLinkRequest, request: Request) -> Dict[str, Any]:
+        admin = require_admin(request)
+        try:
+            filename, seconds, fetched_title = services.sounds.add_from_link(body.url)
+        except SoundError as exc:
+            log.info("Sound link refused: %s | %s", exc.message, exc.detail)
+            raise AppError(400, exc.message, "bad_sound")
+
+        sound_id = services.db.add_sound(
+            title=safe_title(body.title or fetched_title),
+            filename=filename, seconds=seconds, source=body.url.strip()[:400],
+            added_by=admin.display_name,
+            chime=(body.chime or "").strip() or None,
+        )
+        log.info("%s added the sound %r from a link (%.1fs)",
+                 admin.username, fetched_title, seconds)
+        return {"sound": sound_view(services.db.get_sound(sound_id))}
+
+    @app.post("/api/admin/sounds/{sound_id}/delete")
+    def api_delete_sound(sound_id: int, request: Request) -> Dict[str, Any]:
+        require_admin(request)
+        removed = services.db.delete_sound(sound_id)
+        if removed is None:
+            raise AppError(404, "That sound no longer exists.", "not_found")
+        services.sounds.remove(removed["filename"])
+        return {"deleted": True}
 
     # -- scheduled announcements -------------------------------------------
 

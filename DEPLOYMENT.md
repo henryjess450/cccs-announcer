@@ -319,6 +319,66 @@ Two things worth doing:
 
 ---
 
+## Ready-made announcements and drills
+
+A row of buttons sits above the typing box. Press one, fill in any boxes, and
+it goes out. Nobody retypes "Bus number 12 has arrived" or composes a drill
+script under pressure.
+
+Your school starts with bus arrivals, "report to the office", "attention
+staff", and **five practice drills** — fire, earthquake, lockdown, hold and
+secure, and all clear.
+
+### About the drills
+
+- **They are PRACTICE announcements.** Each one says "this is a practice" at
+  the start *and* the end, because somebody walking into a corridor halfway
+  through has to hear the word before they act on it.
+- **They are administrators only**, and shown in red so nobody presses one by
+  accident. A practice lockdown should come from the office.
+- **They jump the queue** and use the urgent chime.
+- **Every drill is written to the sign-in trail** as well as the announcement
+  log — who ran it and when.
+
+> **Real emergency wording is not included, on purpose.** What the PA says in
+> an actual lockdown is a life-safety decision that belongs to your district's
+> safety plan, not to a default in a piece of software. Add your approved
+> wording through the Admin page, mark it as a drill so it stays administrators
+> only, and rehearse it.
+
+Admin → **Ready-made announcements** to add your own. Write `{number}` or
+`{name}` anywhere in the words and staff get a box to fill in.
+
+## Sound clips
+
+Sirens, countdowns, music for an event — anything that is not somebody
+talking. Admin → **Sound clips** to add them; staff can then play them over
+the PA from the announcement page, with a **Listen** button that plays on
+their own computer first.
+
+Clips go through the same queue as announcements, so one can never talk over
+an announcement, and each is logged against whoever played it. Up to five
+minutes and 25 MB each.
+
+**Uploading** a WAV works on any install. MP3 and other formats need **ffmpeg**
+on the PA machine.
+
+**Fetching the sound from a link** additionally needs **yt-dlp**. Neither is
+installed by the announcer; the Admin page hides that box when the machine
+cannot do it, rather than offering something that always fails. To add both:
+
+```
+winget install Gyan.FFmpeg
+winget install yt-dlp.yt-dlp
+```
+
+Then restart the announcer.
+
+> Only the sound is kept — there is no video. Two things are worth checking
+> before you use a link: that the school is allowed to play that audio over a
+> PA, and that taking it from that site is allowed by the site's own terms.
+> Neither is something the announcer can check for you.
+
 ## Scheduled announcements
 
 **Scheduled** in the top right of the announcement page. Staff schedule their

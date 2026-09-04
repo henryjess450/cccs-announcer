@@ -47,6 +47,20 @@
   var adminLink     = el("admin-link");
   var signoutBtn    = el("signout");
 
+  var presetsBox    = el("presets");
+  var presetsRow    = el("presets-row");
+  var presetOverlay = el("preset-overlay");
+  var presetTitle   = el("preset-title");
+  var presetLead    = el("preset-lead");
+  var presetSlots   = el("preset-slots");
+  var presetPreview = el("preset-preview");
+  var presetForm    = el("preset-form");
+  var presetSend    = el("preset-send");
+  var presetCancel  = el("preset-cancel");
+  var presetError   = el("preset-error");
+  var presetErrTxt  = el("preset-error-text");
+  var soundsHeading = el("sounds-heading");
+  var soundsList    = el("sounds");
   var pwOverlay     = el("password-overlay");
   var pwForm        = el("password-form");
   var pwCurrent     = el("current-password");
@@ -267,6 +281,180 @@
       updateCounter();
     });
   });
+
+  /* ------------------------------------------------------------------ */
+  /* ready-made announcements                                            */
+  /* ------------------------------------------------------------------ */
+
+  var activePreset = null;
+
+  function presetText(preset) {
+    // Mirrors what the server does, so what is shown before pressing Announce
+    // is what goes out. The server fills it in again for real -- this is only
+    // for the person to read.
+    var filled = preset.body;
+    preset.slots.forEach(function (slot) {
+      var field = el("slot-" + slot.name);
+      var value = field ? field.value.trim() : "";
+      filled = filled.split("{" + slot.name + "}").join(value || "\u2026");
+    });
+    return filled;
+  }
+
+  function refreshPresetPreview() {
+    if (activePreset) { presetPreview.textContent = presetText(activePreset); }
+  }
+
+  function openPreset(preset) {
+    activePreset = preset;
+    presetError.hidden = true;
+    presetTitle.textContent = preset.title;
+    presetLead.textContent = preset.is_drill
+      ? "This is a practice announcement. It plays to the whole school and " +
+        "jumps the queue."
+      : "This plays to the whole school.";
+    presetSend.textContent = preset.is_drill ? "Announce the drill" : "Announce it";
+
+    presetSlots.innerHTML = "";
+    preset.slots.forEach(function (slot, index) {
+      var label = document.createElement("label");
+      label.className = "field__label";
+      label.htmlFor = "slot-" + slot.name;
+      label.textContent = slot.label;
+      presetSlots.appendChild(label);
+
+      var input = document.createElement("input");
+      input.type = "text";
+      input.className = "field__input field__input--line";
+      input.id = "slot-" + slot.name;
+      input.addEventListener("input", refreshPresetPreview);
+      presetSlots.appendChild(input);
+      if (index === 0) { setTimeout(function () { input.focus(); }, 50); }
+    });
+
+    refreshPresetPreview();
+    presetOverlay.hidden = false;
+    if (!preset.slots.length) { presetSend.focus(); }
+  }
+
+  function closePreset() {
+    presetOverlay.hidden = true;
+    activePreset = null;
+  }
+
+  presetCancel.addEventListener("click", closePreset);
+
+  presetForm.addEventListener("submit", function (event) {
+    event.preventDefault();
+    if (!activePreset) { return; }
+
+    var values = {};
+    activePreset.slots.forEach(function (slot) {
+      var field = el("slot-" + slot.name);
+      values[slot.name] = field ? field.value : "";
+    });
+
+    presetSend.disabled = true;
+    post("/api/presets/" + activePreset.id + "/use", { values: values })
+      .then(function (data) {
+        mySubmissions[data.id] = true;
+        closePreset();
+        setTimeout(refreshHistory, 500);
+      })
+      .catch(function (error) {
+        presetErrTxt.textContent = error.message;
+        presetError.hidden = false;
+      })
+      .then(function () { presetSend.disabled = false; });
+  });
+
+  function loadPresets() {
+    request("/api/presets").then(function (data) {
+      presetsRow.innerHTML = "";
+      var usable = data.presets.filter(function (p) { return p.enabled !== false; });
+      if (!usable.length) { presetsBox.hidden = true; return; }
+
+      usable.forEach(function (preset) {
+        var btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "preset" + (preset.is_drill ? " preset--drill" : "");
+        btn.textContent = preset.title;
+        btn.addEventListener("click", function () { openPreset(preset); });
+        presetsRow.appendChild(btn);
+      });
+      presetsBox.hidden = false;
+    }).catch(function () { presetsBox.hidden = true; });
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* sound clips                                                         */
+  /* ------------------------------------------------------------------ */
+
+  function loadSounds() {
+    request("/api/sounds").then(function (data) {
+      var usable = (data.sounds || []).filter(function (s) { return s.enabled; });
+      soundsList.innerHTML = "";
+      if (!usable.length) {
+        soundsHeading.hidden = true;
+        soundsList.hidden = true;
+        return;
+      }
+
+      usable.forEach(function (sound) {
+        var li = document.createElement("li");
+        li.className = "sound";
+
+        var name = document.createElement("span");
+        name.className = "sound__name";
+        name.textContent = sound.title;
+        var length = document.createElement("span");
+        length.className = "sound__length";
+        length.textContent = "  " + sound.seconds.toFixed(1) + "s";
+        name.appendChild(length);
+        li.appendChild(name);
+
+        var listen = document.createElement("button");
+        listen.type = "button";
+        listen.className = "chime__listen";
+        listen.setAttribute("aria-pressed", "false");
+        listen.textContent = "Listen";
+        listen.addEventListener("click", function () {
+          // Same as the chime picker: this plays here, not on the PA.
+          var wasThisOne = listen.getAttribute("aria-pressed") === "true";
+          stopChimeAudio();
+          if (wasThisOne) { return; }
+          listen.setAttribute("aria-pressed", "true");
+          listen.textContent = "Stop";
+          chimeAudio = new Audio("/api/sounds/" + sound.id + "/audio");
+          chimeAudio.addEventListener("ended", stopChimeAudio);
+          chimeAudio.addEventListener("error", stopChimeAudio);
+          chimeAudio.play().catch(stopChimeAudio);
+        });
+        li.appendChild(listen);
+
+        var play = document.createElement("button");
+        play.type = "button";
+        play.className = "btn btn--quiet btn--small";
+        play.textContent = "Play on the PA";
+        play.addEventListener("click", function () {
+          if (!window.confirm("Play \u201c" + sound.title +
+                              "\u201d over the whole school?")) { return; }
+          play.disabled = true;
+          post("/api/sounds/" + sound.id + "/play")
+            .catch(function (error) { showBanner(error.message); })
+            .then(function () { play.disabled = false; });
+        });
+        li.appendChild(play);
+
+        soundsList.appendChild(li);
+      });
+      soundsHeading.hidden = false;
+      soundsList.hidden = false;
+    }).catch(function () {
+      soundsHeading.hidden = true;
+      soundsList.hidden = true;
+    });
+  }
 
   /* ------------------------------------------------------------------ */
   /* choosing an announcement sound                                      */
@@ -783,6 +971,7 @@
   // Escape backs out of the confirmation.
   document.addEventListener("keydown", function (event) {
     if (event.key !== "Escape") { return; }
+    if (!presetOverlay.hidden) { closePreset(); return; }
     if (!chimeOverlay.hidden) { closeChimeOverlay(); return; }
     if (!pwOverlay.hidden && !pwCancel.hidden) {
       closePasswordOverlay();
@@ -945,6 +1134,8 @@
 
   function startLiveUpdates() {
     refreshHistory();
+    loadPresets();
+    loadSounds();
     connect();
     textEl.focus();
   }

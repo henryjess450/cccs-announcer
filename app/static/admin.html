@@ -91,6 +91,114 @@
   </section>
 
   <!-- ------------------------------------------------------------------ -->
+  <section class="card" aria-labelledby="sounds-heading">
+    <h2 id="sounds-heading" class="card__heading">Sound clips</h2>
+    <p class="notice" style="margin-top:0;border:0;padding-top:0">
+      Sirens, countdowns, music for an event — anything that is not somebody
+      talking. Staff can play these over the PA; only you can add them.
+      <span id="sound-limits"></span>
+    </p>
+
+    <form id="sound-upload" class="inline-form" novalidate>
+      <div>
+        <label class="field__label" for="sound-file">Sound file</label>
+        <input class="field__input field__input--line" id="sound-file" type="file"
+               accept="audio/*">
+      </div>
+      <div>
+        <label class="field__label" for="sound-title">Name it</label>
+        <input class="field__input field__input--line" id="sound-title" type="text"
+               placeholder="Air raid siren">
+      </div>
+      <div>
+        <button type="submit" class="btn btn--send btn--small" id="sound-add">Add</button>
+      </div>
+    </form>
+
+    <form id="sound-link-form" class="inline-form" novalidate hidden>
+      <div style="flex: 2 1 320px">
+        <label class="field__label" for="sound-url">…or fetch the sound from a link</label>
+        <input class="field__input field__input--line" id="sound-url" type="url"
+               placeholder="https://…">
+      </div>
+      <div>
+        <button type="submit" class="btn btn--quiet btn--small" id="sound-fetch">Fetch</button>
+      </div>
+      <div style="flex: 2 1 100%">
+        <p class="field__hint" style="margin:0">
+          Only the sound is kept; there is no video. Check that whatever you
+          fetch is something the school is allowed to play, and that fetching
+          it is allowed by the site you are taking it from.
+        </p>
+      </div>
+    </form>
+
+    <p class="field__hint" id="sound-link-unavailable" hidden>
+      This computer cannot fetch sound from links — that needs yt-dlp and
+      ffmpeg installed. Upload a WAV or MP3 instead.
+    </p>
+
+    <div class="table-wrap">
+      <table class="grid" id="sounds">
+        <thead>
+          <tr>
+            <th scope="col">Name</th>
+            <th scope="col">Length</th>
+            <th scope="col">Where from</th>
+            <th scope="col">Added by</th>
+            <th scope="col">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="sounds-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------------ -->
+  <section class="card" aria-labelledby="presets-heading">
+    <h2 id="presets-heading" class="card__heading">Ready-made announcements</h2>
+    <p class="notice" style="margin-top:0;border:0;padding-top:0">
+      Write <code>{number}</code> or <code>{name}</code> anywhere in the words
+      and staff get a box to fill in. Anything marked as a drill is
+      administrators only and jumps the queue.
+    </p>
+
+    <form id="preset-form" class="inline-form" novalidate>
+      <div>
+        <label class="field__label" for="preset-title">Name</label>
+        <input class="field__input field__input--line" id="preset-title" type="text"
+               placeholder="Assembly">
+      </div>
+      <div style="flex: 3 1 340px">
+        <label class="field__label" for="preset-body">What it says</label>
+        <input class="field__input field__input--line" id="preset-body" type="text"
+               placeholder="Assembly in the gym at {time}.">
+      </div>
+      <div class="options__item options__item--check">
+        <input type="checkbox" id="preset-drill" class="field__check">
+        <label class="field__label field__label--inline" for="preset-drill">Drill</label>
+      </div>
+      <div>
+        <button type="submit" class="btn btn--send btn--small" id="preset-add">Add</button>
+      </div>
+    </form>
+
+    <div class="table-wrap">
+      <table class="grid" id="presets">
+        <thead>
+          <tr>
+            <th scope="col">Name</th>
+            <th scope="col">What it says</th>
+            <th scope="col">Who can use it</th>
+            <th scope="col">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="presets-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------------ -->
   <section class="card" aria-labelledby="log-heading">
     <h2 id="log-heading" class="card__heading">Announcement log</h2>
     <p class="notice" style="margin-top:0;border:0;padding-top:0">

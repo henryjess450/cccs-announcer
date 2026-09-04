@@ -114,6 +114,7 @@ class Config:
     audio_cache_dir: Path
     log_dir: Path
     log_level: str
+    sound_dir: Path
 
     # --- TTS ---
     tts_engine: str            # "piper" | "mock"
@@ -154,6 +155,12 @@ class Config:
 
     # --- preview ---
     preview_max_concurrent: int
+
+    # --- sound clips ---
+    sound_max_seconds: float
+    sound_max_mb: int
+    ffmpeg_binary: str
+    ytdlp_binary: str
 
     # --- scheduled announcements ---
     #: The school's own timezone. Everything staff type is in this; everything
@@ -213,6 +220,7 @@ def load_config(env_file: Optional[Path] = None) -> Config:
         chime_dir=Path(get("PA_CHIME_DIR", str(data_dir / "chimes"))).expanduser(),
         audio_cache_dir=Path(get("PA_AUDIO_CACHE_DIR", str(data_dir / "cache"))).expanduser(),
         log_dir=Path(get("PA_LOG_DIR", str(data_dir / "logs"))).expanduser(),
+        sound_dir=Path(get("PA_SOUND_DIR", str(data_dir / "sounds"))).expanduser(),
         log_level=get("PA_LOG_LEVEL", "INFO").upper(),
         tts_engine=get("PA_TTS_ENGINE", "piper").lower(),
         # Both fall back to auto-discovery, so a working install needs no
@@ -243,6 +251,10 @@ def load_config(env_file: Optional[Path] = None) -> Config:
         rate_limit_count=int(get("PA_RATE_LIMIT_COUNT", "5")),
         rate_limit_window_seconds=int(get("PA_RATE_LIMIT_WINDOW_SECONDS", "600")),
         preview_max_concurrent=int(get("PA_PREVIEW_MAX_CONCURRENT", "2")),
+        sound_max_seconds=float(get("PA_SOUND_MAX_SECONDS", "300")),
+        sound_max_mb=int(get("PA_SOUND_MAX_MB", "25")),
+        ffmpeg_binary=get("PA_FFMPEG_BINARY", "ffmpeg"),
+        ytdlp_binary=get("PA_YTDLP_BINARY", "yt-dlp"),
         timezone=get("PA_TIMEZONE", "America/Vancouver").strip() or "America/Vancouver",
         schedule_grace_minutes=int(get("PA_SCHEDULE_GRACE_MINUTES", "10")),
         schedule_check_seconds=int(get("PA_SCHEDULE_CHECK_SECONDS", "20")),
@@ -259,5 +271,5 @@ def load_config(env_file: Optional[Path] = None) -> Config:
 
 def ensure_directories(config: Config) -> None:
     for directory in (config.data_dir, config.chime_dir, config.audio_cache_dir,
-                      config.log_dir, config.db_path.parent):
+                      config.log_dir, config.sound_dir, config.db_path.parent):
         directory.mkdir(parents=True, exist_ok=True)

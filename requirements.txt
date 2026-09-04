@@ -5,6 +5,10 @@
 # tested today. To move them, bump one line at a time and run the test suite.
 fastapi==0.141.1
 uvicorn[standard]==0.52.4
+
+# Reading uploaded files (sound clips) out of a form. FastAPI requires it for
+# any endpoint that accepts a file.
+python-multipart==0.0.32
 sounddevice==0.5.6
 numpy==2.5.2
 

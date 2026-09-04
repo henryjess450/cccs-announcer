@@ -85,6 +85,7 @@ class Player:
         tts: TTSEngine,
         audio: AudioBackend,
         chimes: ChimeLibrary,
+        sounds=None,
         on_change: Optional[Callable[[], None]] = None,
     ):
         self.config = config
@@ -92,6 +93,7 @@ class Player:
         self.tts = tts
         self.audio = audio
         self.chimes = chimes
+        self.sounds = sounds
         self._on_change = on_change or (lambda: None)
 
         self.health = PlayerHealth()
@@ -162,6 +164,12 @@ class Player:
 
     # -- estimates -----------------------------------------------------------
 
+    def estimate_sound_seconds(self, seconds: float, chime_key: Optional[str]) -> float:
+        """A clip's length is known exactly, unlike speech."""
+        chime = self.chimes.seconds_for(chime_key)
+        gap = self.config.chime_gap_ms / 1000.0 if chime else 0.0
+        return seconds + chime + gap + 0.4
+
     def estimate_seconds(self, normalized_text: str, chime_key: Optional[str]) -> float:
         """Rough duration used for the "2 ahead of you, about 40 seconds" hint."""
         rate = self.db.speech_rate(self.config.chars_per_second)
@@ -198,6 +206,10 @@ class Player:
         item_id = int(item["id"])
         text = item["normalized_text"]
         is_test = item.get("kind") == "test"
+        # A sound clip plays a file instead of synthesised speech. Everything
+        # else about the sequence -- the queue, the lock, Stop -- is identical,
+        # so a clip can never overlap an announcement.
+        sound_path = self.sounds.path_for(item.get("sound_file")) if self.sounds else None
 
         with self._lock:
             self._current_id = item_id
@@ -212,13 +224,14 @@ class Player:
             # ---- 1. Synthesize first, before touching the device. ------------
             # Doing this up front means the device is held for the shortest
             # possible time, and a TTS failure never leaves a half-open stream.
-            if text and not is_test:
+            if text and not is_test and sound_path is None:
                 speech_path = self._synthesize(item_id, text)
 
             # ---- 2. Take the device for the whole sequence. ------------------
             with self.audio.open_session() as session:
                 self._mark_audio_ok()
-                completed = self._play_sequence(session, item, speech_path, stop_event)
+                completed = self._play_sequence(
+                    session, item, speech_path or sound_path, stop_event)
 
             duration = time.monotonic() - started
 
@@ -230,7 +243,7 @@ class Player:
                 log.info("Announcement %s stopped by %s after %.1fs", item_id, stopped_by, duration)
             else:
                 self.db.finish(item_id, STATE_DONE, duration_seconds=duration)
-                if text and not is_test:
+                if text and not is_test and sound_path is None:
                     self.db.record_speech_rate(len(text), duration)
                 log.info("Announcement %s played in %.1fs (%s)", item_id, duration, item["user_name"])
 
@@ -269,8 +282,11 @@ class Player:
 
     # -- the audible sequence -----------------------------------------------
 
-    def _play_sequence(self, session, item, speech_path, stop_event) -> bool:
-        """chime -> gap -> speech -> optional end tone.
+    def _play_sequence(self, session, item, body_path, stop_event) -> bool:
+        """chime -> gap -> body -> optional end tone.
+
+        `body_path` is either synthesised speech or a sound clip; the sequence
+        does not care which.
 
         Returns False as soon as any part is cut short by Stop, so the remaining
         parts are skipped: pressing Stop during the chime must not still play
@@ -285,8 +301,8 @@ class Player:
             if not session.play_silence(self.config.chime_gap_ms / 1000.0, stop_event):
                 return False
 
-        if speech_path is not None:
-            if not session.play_wav(speech_path, self.config.speech_gain, stop_event):
+        if body_path is not None:
+            if not session.play_wav(body_path, self.config.speech_gain, stop_event):
                 return False
 
         if self.config.end_tone:
