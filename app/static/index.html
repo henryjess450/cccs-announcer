@@ -107,6 +107,8 @@
       Your announcement sound:
       <strong id="my-chime-label">&hellip;</strong>
       <button type="button" class="linkbtn" id="change-chime">Change</button>
+      <span class="mysound__sep">&middot;</span>
+      <button type="button" class="linkbtn" id="change-password">Change my password</button>
     </p>
 
     <p class="notice" id="attribution">
@@ -194,7 +196,7 @@
              type="password" autocomplete="new-password" required>
       <p class="field__hint">At least 10 characters. A short phrase works well.</p>
 
-      <fieldset class="chimes">
+      <fieldset class="chimes" id="setup-chime-block">
         <legend class="field__label">Your announcement sound</legend>
         <p class="field__hint">
           Plays before everything you announce. Press Listen to hear one — it
@@ -205,6 +207,10 @@
 
       <div class="actions">
         <button type="submit" class="btn btn--send" id="password-save">Save my password</button>
+        <!-- Only offered when changing a password by choice. The first-run
+             administrator account has to be claimed before anything else
+             works, so there is nothing to cancel back to. -->
+        <button type="button" class="btn btn--quiet" id="password-cancel" hidden>Cancel</button>
       </div>
     </form>
   </div>

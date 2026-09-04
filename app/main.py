@@ -444,7 +444,7 @@ class Services:
         lines.append("   ADMINISTRATOR SIGN-IN:")
         lines.append("")
         for user in admins:
-            note = "  (must set a new password)" if user["must_change_password"] else ""
+            note = "  (not set up yet)" if user["must_change_password"] else ""
             locked = "  (LOCKED)" if user["locked_until"] else ""
             lines.append(f"        {user['username']:<16} {user['display_name']}{note}{locked}")
         lines += [
@@ -1250,7 +1250,6 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
                 display_name=body.display_name,
                 password=password,
                 role=body.role,
-                must_change_password=True,
                 created_by=admin.id,
             )
         except ValueError as exc:

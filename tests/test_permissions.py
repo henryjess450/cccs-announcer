@@ -119,7 +119,8 @@ def test_an_administrator_can_create_an_account(admin_client, anon_client):
     assert created.status_code == 201
     body = created.json()
     assert body["user"]["username"] == "pnewman"
-    assert body["user"]["must_change_password"] is True
+    # Staff keep the password they are handed; nothing blocks them first.
+    assert body["user"]["must_change_password"] is False
     # The issued password is returned exactly once, here.
     assert len(body["password"]) >= 12
 

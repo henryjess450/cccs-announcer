@@ -58,6 +58,9 @@
   var pwLead        = el("password-lead");
   var setupFields   = el("setup-fields");
   var setupChimes   = el("setup-chimes");
+  var setupChimeBlk = el("setup-chime-block");
+  var pwCancel      = el("password-cancel");
+  var changePwBtn   = el("change-password");
   var myChimeLabel  = el("my-chime-label");
   var changeChime   = el("change-chime");
   var chimeOverlay  = el("chime-overlay");
@@ -739,6 +742,11 @@
   document.addEventListener("keydown", function (event) {
     if (event.key !== "Escape") { return; }
     if (!chimeOverlay.hidden) { closeChimeOverlay(); return; }
+    if (!pwOverlay.hidden && !pwCancel.hidden) {
+      closePasswordOverlay();
+      changePwBtn.focus();
+      return;
+    }
     if (!confirmBox.hidden) { closeConfirm(true); }
   });
 
@@ -768,25 +776,62 @@
     return !!(me && me.is_bootstrap);
   }
 
+  /**
+   * Two quite different screens share this overlay:
+   *
+   *   - Claiming the first-run administrator account. Compulsory: nothing else
+   *     works until it is done, so there is no Cancel. It also asks for a name,
+   *     a username and a sound.
+   *   - Changing your own password because you want to. Entirely optional, so
+   *     it has a Cancel and asks for nothing else.
+   *
+   * Staff are never *made* to change the password they were given.
+   */
   function openPasswordOverlay() {
+    pwError.hidden = true;
+
     if (isFirstRunSetup()) {
-      // The first-run administrator account belongs to the system until a real
-      // person claims it, so they name it as well as setting a password.
       pwTitle.textContent = "Set up your administrator account";
       pwLead.textContent = "This account was created for you when the announcer " +
                            "first started. Give it your name and a password only " +
                            "you know. Announcements are recorded against it.";
       pwSave.textContent = "Set up my account";
       setupFields.hidden = false;
+      setupChimeBlk.hidden = false;
+      pwCancel.hidden = true;
       pwOverlay.hidden = false;
       renderChimePicker(setupChimes, "setup-chime-choice", me && me.chime);
       setupName.focus();
       return;
     }
+
+    pwTitle.textContent = "Change my password";
+    pwLead.textContent = "Only if you want to. The password you were given keeps " +
+                         "working otherwise.";
+    pwSave.textContent = "Save my password";
+    setupFields.hidden = true;
+    setupChimeBlk.hidden = true;
+    pwCancel.hidden = false;
     pwOverlay.hidden = false;
-    renderChimePicker(setupChimes, "setup-chime-choice", me && me.chime);
+    pwCurrent.value = "";
+    pwNew.value = "";
     pwCurrent.focus();
   }
+
+  function closePasswordOverlay() {
+    stopChimeAudio();
+    pwOverlay.hidden = true;
+    pwCurrent.value = "";
+    pwNew.value = "";
+    pwError.hidden = true;
+  }
+
+  pwCancel.addEventListener("click", function () {
+    closePasswordOverlay();
+    changePwBtn.focus();
+  });
+
+  changePwBtn.addEventListener("click", openPasswordOverlay);
 
   pwForm.addEventListener("submit", function (event) {
     event.preventDefault();
@@ -795,7 +840,9 @@
 
     var firstRun = isFirstRunSetup();
     var url = firstRun ? "/api/setup" : "/api/password";
-    var pickedChime = chosenChime(setupChimes, "setup-chime-choice");
+    var pickedChime = firstRun
+      ? chosenChime(setupChimes, "setup-chime-choice")
+      : undefined;
     var payload = firstRun ? {
       username: setupUsername.value.trim(),
       display_name: setupName.value.trim(),
@@ -804,8 +851,7 @@
       chime: pickedChime
     } : {
       current_password: pwCurrent.value,
-      new_password: pwNew.value,
-      chime: pickedChime
+      new_password: pwNew.value
     };
 
     post(url, payload).then(function (data) {

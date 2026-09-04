@@ -175,6 +175,11 @@ CLI does the same things and is the way back in if nobody can sign in:
 - **Roles**: `staff` can announce and stop their own; `admin` can stop
   anyone's, manage accounts, see everyone's log, and is exempt from the rate
   limit. The last active administrator cannot be demoted or turned off.
+- **No forced password change.** Staff keep whatever password they are handed
+  and can announce immediately; changing it is offered, never required. The
+  `must_change_password` gate still exists but now applies only to the
+  first-run administrator account, which genuinely has to be claimed before
+  the announcer is finished installing.
 
 ## Tests
 

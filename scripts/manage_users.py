@@ -72,7 +72,7 @@ def cmd_list(accounts: Accounts, args) -> int:
         if user["locked_until"]:
             status += " (locked)"
         if user["must_change_password"]:
-            status += " (must change password)"
+            status += " (not set up yet)"
         print(f"{user['id']:>4}  {user['username']:<18} {user['display_name']:<24} "
               f"{user['role']:<7} {status}")
     return 0
@@ -89,7 +89,8 @@ def cmd_add(accounts: Accounts, args) -> int:
     try:
         user = accounts.create_user(
             username=username, display_name=display or username,
-            password=password, role=role, must_change_password=not args.no_password_change,
+            password=password, role=role,
+            must_change_password=args.force_password_change,
         )
     except ValueError as exc:
         print(f"{exc}")
@@ -97,6 +98,8 @@ def cmd_add(accounts: Accounts, args) -> int:
     print(f"Created {user.username} ({user.role}).")
     if user.must_change_password:
         print("They will be asked to choose their own password when they first sign in.")
+    else:
+        print("Give them that password -- it is the one they will keep using.")
     return 0
 
 
@@ -115,7 +118,7 @@ def cmd_reset(accounts: Accounts, args) -> int:
     password = accounts.reset_password(int(row["id"]))
     print(f"\n  New password for {row['username']}: {password}")
     print("  Write this down now. It will not be shown again.")
-    print("  They will be asked to choose their own when they sign in.\n")
+    print("  This is the password they keep using.\n")
     return 0
 
 
@@ -177,8 +180,9 @@ def main() -> int:
     add.add_argument("username", nargs="?")
     add.add_argument("--name", help="full name shown to the school")
     add.add_argument("--admin", action="store_true", help="make them an administrator")
-    add.add_argument("--no-password-change", action="store_true",
-                     help="do not force them to choose a new password")
+    add.add_argument("--force-password-change", action="store_true",
+                     help="make them choose a new password on first sign-in "
+                          "(off by default -- they keep the one you give them)")
 
     for name, help_text in (
         ("reset", "give an account a new password"),

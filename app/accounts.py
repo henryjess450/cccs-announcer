@@ -156,7 +156,13 @@ class Accounts:
         display_name: str,
         password: str,
         role: str = ROLE_STAFF,
-        must_change_password: bool = True,
+        # Staff keep the password they are given. Forcing a change on first
+        # sign-in was one more thing to go wrong between handing somebody a
+        # password and them being able to announce, and an administrator who
+        # can reset passwords can already act as anyone -- so the change was
+        # not buying much. The gate still exists for the first-run
+        # administrator account, which genuinely must be claimed.
+        must_change_password: bool = False,
         created_by: Optional[int] = None,
     ) -> User:
         username = username.strip()
@@ -224,9 +230,12 @@ class Accounts:
 
     def reset_password(self, user_id: int, *, by: Optional[int] = None) -> str:
         """Admin action. Returns the new password to read out once; it is never
-        stored in readable form and cannot be shown again."""
+        stored in readable form and cannot be shown again.
+
+        They keep this password -- they are not asked to change it.
+        """
         password = generate_password()
-        self.set_password(user_id, password, must_change=True)
+        self.set_password(user_id, password, must_change=False)
         self.end_sessions_for_user(user_id)
         self.record_event("user.password_reset", user_id=user_id, detail=f"by={by}")
         return password

@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 # Announcement lifecycle. Anything not in {queued, playing} is terminal.
 STATE_QUEUED = "queued"
@@ -141,6 +141,13 @@ _MIGRATIONS = {
     -- The chime each person's announcements play. NULL means "use whatever
     -- PA_DEFAULT_CHIME says", so existing accounts keep working unchanged.
     ALTER TABLE users ADD COLUMN chime TEXT;
+    """,
+    5: """
+    -- Staff no longer have to change the password they were given. Anyone
+    -- already carrying the flag is released, so nobody is left waiting on a
+    -- screen that no longer appears for them. The first-run administrator
+    -- account keeps its flag: that one genuinely has to be claimed.
+    UPDATE users SET must_change_password = 0 WHERE is_bootstrap = 0;
     """,
 }
 

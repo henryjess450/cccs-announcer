@@ -327,12 +327,15 @@ Sign in as an administrator and click **Admin** in the top right.
    **Add account**.
 2. A password appears in a green box. **Give it to that person now** — it
    cannot be shown again.
-3. The first time they sign in they choose their own password. Until they do,
-   they cannot make announcements.
+3. That is the password they keep using. They can sign in and announce
+   straight away.
+
+They *can* change it themselves later — **Change my password** on the
+announcement page — but nothing makes them.
 
 | Button | What it does |
 |---|---|
-| **Reset password** | New password, and signs them out everywhere immediately |
+| **Reset password** | New password, and signs them out everywhere immediately. That is the password they keep |
 | **Turn off** | Stops the account signing in, ends its sessions at once. Use when someone leaves |
 | **Unlock** | Clears a lockout after too many wrong passwords |
 | **Make admin / Make staff** | Changes what they can do |

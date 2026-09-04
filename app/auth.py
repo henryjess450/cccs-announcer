@@ -9,8 +9,10 @@ Three things happen on every request that changes something:
    alone is not enough, because a browser attaches cookies to requests started
    by other sites. Announcements are exactly the kind of thing you do not want
    a malicious page to be able to trigger from a staff member's browser.
-3. **Forced password change.** An account still on its issued password can do
-   nothing except change it.
+3. **First-run setup.** The administrator account the system creates for
+   itself can do nothing except claim itself -- name, username and password.
+   Ordinary staff keep whatever password they were given and are never
+   stopped by this.
 
 Errors carry a `reason` alongside the human message so the page can react --
 sign-in again, show the password screen, show the rate-limit notice -- without
@@ -28,7 +30,7 @@ from .security import tokens_match
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
-# Reachable while an account is still on its issued password.
+# Reachable while the first-run administrator account is still unclaimed.
 PASSWORD_CHANGE_ALLOWED_PATHS = {
     "/api/me",
     "/api/password",
@@ -83,10 +85,12 @@ def require_user(request: Request) -> User:
                 "bad_csrf",
             )
 
+    # In practice this is only ever the first-run administrator account: staff
+    # accounts are created without the flag.
     if user.must_change_password and request.url.path not in PASSWORD_CHANGE_ALLOWED_PATHS:
         raise AppError(
             403,
-            "Choose a new password before making announcements.",
+            "Finish setting up this account before making announcements.",
             "password_change_required",
         )
     return user

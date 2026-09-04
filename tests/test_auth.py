@@ -233,27 +233,55 @@ def test_reads_do_not_need_the_token(client):
 
 # -- forced password change ------------------------------------------------
 
-def test_a_new_account_must_choose_a_password_before_announcing(anon_client, app):
+def test_a_new_account_can_announce_straight_away(anon_client, app):
+    """Staff keep the password they were given. Nothing stands between being
+    handed a password and being able to announce."""
     services = app.state.services
-    services.accounts.create_user(
+    user = services.accounts.create_user(
         username="newbie", display_name="Sam New", password="issued password here",
-        role="staff", must_change_password=True,
+        role="staff",
     )
+    assert user.must_change_password is False
+
     sign_in(anon_client, "newbie", "issued password here")
-
-    blocked = anon_client.post("/api/announcements", json={"text": "Hello everyone."})
-    assert blocked.status_code == 403
-    assert blocked.json()["reason"] == "password_change_required"
-
-    changed = anon_client.post("/api/password", json={
-        "current_password": "issued password here",
-        "new_password": "my own chosen password",
-    })
-    assert changed.status_code == 200
-
     assert anon_client.post(
         "/api/announcements", json={"text": "Hello everyone."}
     ).status_code == 201
+
+
+def test_an_account_made_by_an_administrator_can_announce_straight_away(
+    admin_client, anon_client
+):
+    created = admin_client.post("/api/admin/users", json={
+        "username": "pnewman", "display_name": "Priya Newman", "role": "staff",
+    }).json()
+    assert created["user"]["must_change_password"] is False
+
+    sign_in(anon_client, "pnewman", created["password"])
+    assert anon_client.post(
+        "/api/announcements", json={"text": "Straight to work."}
+    ).status_code == 201
+
+
+def test_a_reset_password_is_the_one_they_keep(client, admin_client, anon_client, app):
+    services = app.state.services
+    row = services.accounts.get_by_username("dana")
+    password = admin_client.post(
+        f"/api/admin/users/{row['id']}/reset-password", json={}
+    ).json()["password"]
+
+    sign_in(anon_client, "dana", password)
+    assert anon_client.post(
+        "/api/announcements", json={"text": "Works right away."}
+    ).status_code == 201
+
+
+def test_changing_your_own_password_is_still_possible(client):
+    """Removed as a requirement, kept as a choice."""
+    assert client.post("/api/password", json={
+        "current_password": STAFF_PASSWORD,
+        "new_password": "a password I picked myself",
+    }).status_code == 200
 
 
 def test_changing_a_password_needs_the_current_one(client):
