@@ -155,6 +155,16 @@ class Config:
     # --- preview ---
     preview_max_concurrent: int
 
+    # --- scheduled announcements ---
+    #: The school's own timezone. Everything staff type is in this; everything
+    #: stored is UTC.
+    timezone: str
+    #: How late a scheduled announcement may be and still go out. Anything
+    #: later is skipped: the announcer was off, and firing a backlog into a
+    #: building that has moved on is worse than missing it.
+    schedule_grace_minutes: int
+    schedule_check_seconds: int
+
     # --- speaking the address at startup ---
     #   "always" every start, repeating until an administrator signs in
     #   "setup"  only while the first administrator account is unclaimed
@@ -233,6 +243,9 @@ def load_config(env_file: Optional[Path] = None) -> Config:
         rate_limit_count=int(get("PA_RATE_LIMIT_COUNT", "5")),
         rate_limit_window_seconds=int(get("PA_RATE_LIMIT_WINDOW_SECONDS", "600")),
         preview_max_concurrent=int(get("PA_PREVIEW_MAX_CONCURRENT", "2")),
+        timezone=get("PA_TIMEZONE", "America/Vancouver").strip() or "America/Vancouver",
+        schedule_grace_minutes=int(get("PA_SCHEDULE_GRACE_MINUTES", "10")),
+        schedule_check_seconds=int(get("PA_SCHEDULE_CHECK_SECONDS", "20")),
         announce_address_mode=_announce_mode(get("PA_ANNOUNCE_ADDRESS_ON_START", "always")),
         announce_address_interval_seconds=int(
             get("PA_ANNOUNCE_ADDRESS_INTERVAL_SECONDS", "60")),

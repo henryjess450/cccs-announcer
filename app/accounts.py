@@ -63,6 +63,15 @@ class User:
     #: The chime this person's announcements play. None means the school
     #: default, so an account that has never chosen still works.
     chime: Optional[str] = None
+    #: Say "Announcement from ..." before what they typed. Off by default.
+    announce_name: bool = False
+    #: How that name should be spoken, if different from the display name.
+    spoken_name: Optional[str] = None
+
+    @property
+    def announced_as(self) -> str:
+        """The name to say aloud. Falls back to the name on the account."""
+        return (self.spoken_name or "").strip() or self.display_name
 
     @property
     def is_admin(self) -> bool:
@@ -78,6 +87,9 @@ class User:
             "must_change_password": self.must_change_password,
             "is_bootstrap": self.is_bootstrap,
             "chime": self.chime,
+            "announce_name": self.announce_name,
+            "spoken_name": self.spoken_name,
+            "announced_as": self.announced_as,
         }
 
 
@@ -91,6 +103,8 @@ def _user_from_row(row) -> User:
         must_change_password=bool(row["must_change_password"]),
         is_bootstrap=bool(row["is_bootstrap"]) if "is_bootstrap" in row.keys() else False,
         chime=(row["chime"] if "chime" in row.keys() else None) or None,
+        announce_name=bool(row["announce_name"]) if "announce_name" in row.keys() else False,
+        spoken_name=(row["spoken_name"] if "spoken_name" in row.keys() else None) or None,
     )
 
 
@@ -144,7 +158,8 @@ class Accounts:
     def list_users(self) -> List[Dict[str, Any]]:
         rows = self.db.connect().execute(
             "SELECT id, username, display_name, role, is_active, must_change_password, "
-            "is_bootstrap, chime, created_at, last_login_at, locked_until "
+            "is_bootstrap, chime, announce_name, spoken_name, "
+            "created_at, last_login_at, locked_until "
             "FROM users ORDER BY display_name COLLATE NOCASE"
         ).fetchall()
         return [dict(r) for r in rows]
@@ -319,6 +334,18 @@ class Accounts:
             "UPDATE users SET failed_logins = 0, locked_until = NULL WHERE id = ?", (user_id,)
         )
         self.record_event("user.unlocked", user_id=user_id)
+
+    def set_announce_name(
+        self, user_id: int, enabled: bool, spoken_name: Optional[str] = None
+    ) -> None:
+        """Whether to say who an announcement is from, and how to say it."""
+        cleaned = (spoken_name or "").strip() or None
+        if cleaned and len(cleaned) > 60:
+            raise ValueError("That name is too long to read out.")
+        self.db.connect().execute(
+            "UPDATE users SET announce_name = ?, spoken_name = ? WHERE id = ?",
+            (1 if enabled else 0, cleaned, user_id),
+        )
 
     def set_chime(self, user_id: int, chime: Optional[str]) -> None:
         """Choose the sound this person's announcements play.

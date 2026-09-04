@@ -362,6 +362,20 @@ input:focus-visible {
   overflow-y: auto;
 }
 
+.chime__group {
+  margin: 0;
+  padding: 10px 14px 6px;
+  background: #eceff2;
+  border-bottom: 1px solid var(--line);
+  font-size: .78rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  position: sticky;
+  top: 0;
+}
+
 .chime {
   display: flex;
   align-items: flex-start;
@@ -747,6 +761,21 @@ input:focus-visible {
 @media (max-width: 620px) {
   .factlist { grid-template-columns: 1fr; gap: 2px 0; }
   .factlist dd { margin-bottom: 10px; }
+}
+
+.days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-top: 8px;
+}
+
+.day {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .table-wrap { overflow-x: auto; }

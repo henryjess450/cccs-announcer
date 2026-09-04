@@ -107,7 +107,7 @@ def test_listening_requires_signing_in(anon_client):
 
 def test_choosing_a_sound_changes_what_that_person_announces_with(client, app):
     services = app.state.services
-    assert client.post("/api/my-chime", json={"chime": "fanfare"}).json()["chime"] == "fanfare"
+    assert client.post("/api/my-settings", json={"chime": "fanfare"}).json()["chime"] == "fanfare"
 
     client.post("/api/announcements", json={"text": "With my own sound."})
     assert wait_until(lambda: drained(services), timeout=60)
@@ -119,7 +119,7 @@ def test_choosing_a_sound_changes_what_that_person_announces_with(client, app):
 
 def test_one_persons_choice_does_not_change_anyone_elses(client, admin_client, app):
     services = app.state.services
-    client.post("/api/my-chime", json={"chime": "school_bell"})
+    client.post("/api/my-settings", json={"chime": "school_bell"})
 
     client.post("/api/announcements", json={"text": "Mine."})
     assert wait_until(lambda: drained(services), timeout=60)
@@ -133,8 +133,8 @@ def test_one_persons_choice_does_not_change_anyone_elses(client, admin_client, a
 
 def test_clearing_a_choice_puts_them_back_on_the_school_default(client, app):
     services = app.state.services
-    client.post("/api/my-chime", json={"chime": "fanfare"})
-    assert client.post("/api/my-chime", json={"chime": None}).json()["chime"] is None
+    client.post("/api/my-settings", json={"chime": "fanfare"})
+    assert client.post("/api/my-settings", json={"clear_chime": True}).json()["chime"] is None
 
     client.post("/api/announcements", json={"text": "Back to the default."})
     assert wait_until(lambda: drained(services), timeout=60)
@@ -142,24 +142,24 @@ def test_clearing_a_choice_puts_them_back_on_the_school_default(client, app):
 
 
 def test_a_made_up_choice_is_refused(client):
-    response = client.post("/api/my-chime", json={"chime": "airhorn"})
+    response = client.post("/api/my-settings", json={"chime": "airhorn"})
     assert response.status_code == 400
     assert response.json()["reason"] == "no_such_chime"
 
 
 def test_a_choice_cannot_walk_out_of_the_chime_folder(client, app):
-    response = client.post("/api/my-chime", json={"chime": "../../../../etc/passwd"})
+    response = client.post("/api/my-settings", json={"chime": "../../../../etc/passwd"})
     assert response.status_code == 400
     assert app.state.services.accounts.get_by_username("dana")["chime"] is None
 
 
 def test_choosing_requires_signing_in(anon_client):
-    assert anon_client.post("/api/my-chime", json={"chime": "fanfare"}).status_code == 401
+    assert anon_client.post("/api/my-settings", json={"chime": "fanfare"}).status_code == 401
 
 
 def test_the_choice_survives_signing_out_and_back_in(client, anon_client):
     from tests.conftest import STAFF_PASSWORD, sign_in
-    client.post("/api/my-chime", json={"chime": "westminster"})
+    client.post("/api/my-settings", json={"chime": "westminster"})
     client.post("/api/logout")
 
     user = sign_in(anon_client, "dana", STAFF_PASSWORD)
@@ -218,3 +218,109 @@ def test_the_picker_is_on_the_password_screen(client):
     assert 'id="setup-chimes"' in page
     assert "Your announcement sound" in page
     assert 'id="change-chime"' in page
+
+
+# -- saying who it is from -------------------------------------------------
+
+def test_by_default_nobody_s_name_is_announced(client, app):
+    """Hearing "Announcement from ..." forty times a day would wear thin, so
+    it is off unless somebody turns it on."""
+    services = app.state.services
+    assert client.get("/api/config").json()["announce_name"] is False
+
+    client.post("/api/announcements", json={"text": "Buses are here."})
+    assert wait_until(lambda: drained(services), timeout=60)
+    spoken = services.db.recent(limit=1)[0]["normalized_text"]
+    assert spoken == "Buses are here."
+
+
+def test_turning_it_on_puts_the_name_in_front(client, app):
+    services = app.state.services
+    client.post("/api/my-settings", json={"announce_name": True})
+
+    client.post("/api/announcements", json={"text": "Buses are here."})
+    assert wait_until(lambda: drained(services), timeout=60)
+    spoken = services.db.recent(limit=1)[0]["normalized_text"]
+    assert spoken == "Announcement from Dana Rowe. Buses are here."
+
+
+def test_the_spoken_name_can_differ_from_the_account_name(client, app):
+    """The log says "Jonathan Smith"; the PA says "Mr. Smith"."""
+    services = app.state.services
+    client.post("/api/my-settings", json={
+        "announce_name": True, "spoken_name": "Mr. Smith"})
+
+    client.post("/api/announcements", json={"text": "Please line up."})
+    assert wait_until(lambda: drained(services), timeout=60)
+    row = services.db.recent(limit=1)[0]
+    # "Mr." is expanded, like any other abbreviation.
+    assert row["normalized_text"] == "Announcement from mister Smith. Please line up."
+    # The log still shows who actually sent it.
+    assert row["user_name"] == "Dana Rowe"
+
+
+def test_the_raw_text_stays_what_they_typed(client, app):
+    """The audit trail records what a person wrote, not what the system added."""
+    services = app.state.services
+    client.post("/api/my-settings", json={"announce_name": True})
+    client.post("/api/announcements", json={"text": "Buses are here."})
+    assert wait_until(lambda: drained(services), timeout=60)
+    assert services.db.recent(limit=1)[0]["raw_text"] == "Buses are here."
+
+
+def test_the_spoken_preview_shows_the_opening_too(client):
+    """What you see before sending has to be what the school hears."""
+    client.post("/api/my-settings", json={"announce_name": True})
+    body = client.post("/api/normalize", json={"text": "Bus 12 is here."}).json()
+    assert body["normalized"] == "Announcement from Dana Rowe. Bus number twelve is here."
+
+
+def test_preview_audio_includes_the_opening(client, app):
+    """Preview and Send must not be able to disagree."""
+    plain = client.post("/api/preview", json={"text": "Buses are here."}).content
+    client.post("/api/my-settings", json={"announce_name": True})
+    with_name = client.post("/api/preview", json={"text": "Buses are here."}).content
+    assert plain != with_name
+
+
+def test_turning_it_off_again_removes_the_opening(client, app):
+    services = app.state.services
+    client.post("/api/my-settings", json={"announce_name": True})
+    client.post("/api/my-settings", json={"announce_name": False})
+
+    client.post("/api/announcements", json={"text": "Buses are here."})
+    assert wait_until(lambda: drained(services), timeout=60)
+    assert services.db.recent(limit=1)[0]["normalized_text"] == "Buses are here."
+
+
+def test_a_silly_long_spoken_name_is_refused(client):
+    response = client.post("/api/my-settings", json={
+        "announce_name": True, "spoken_name": "x" * 200})
+    assert response.status_code == 400
+    assert "too long" in response.json()["detail"]
+
+
+def test_the_settings_come_back_with_an_example(client):
+    body = client.post("/api/my-settings", json={
+        "announce_name": True, "spoken_name": "Mrs. Alvarez"}).json()
+    assert body["announced_as"] == "Mrs. Alvarez"
+    assert body["example"].startswith("Announcement from missus Alvarez.")
+
+
+def test_a_scheduled_announcement_also_says_the_name(client, app):
+    services = app.state.services
+    client.post("/api/my-settings", json={"announce_name": True})
+    made = client.post("/api/schedules", json={
+        "text": "Buses are now loading.", "kind": "daily", "at_time": "09:00",
+    }).json()["schedule"]
+
+    from datetime import timedelta
+    from app.db import utcnow
+    due = (utcnow() - timedelta(minutes=1)).isoformat(
+        timespec="seconds").replace("+00:00", "Z")
+    services.db.update_schedule(made["id"], next_run_at=due)
+    services.run_due_schedules()
+    assert wait_until(lambda: drained(services), timeout=60)
+
+    spoken = services.db.recent(limit=1)[0]["normalized_text"]
+    assert spoken.startswith("Announcement from Dana Rowe.")

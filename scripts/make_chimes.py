@@ -225,6 +225,83 @@ def alarm_pattern() -> np.ndarray:
     ]), peak=0.85)
 
 
+def tubular_bells() -> np.ndarray:
+    """Three deep struck bells. The most institutional sound of the set --
+    reads as a school or a church rather than a shop."""
+    return _normalize(np.concatenate([
+        _melody(["G4", "C5", "E5"], gap=0.60, ring=3.0, decay=1.3, brightness=0.65),
+        _silence(0.15),
+    ]))
+
+
+def marimba() -> np.ndarray:
+    """Warm wooden four-note run. Friendly, and easy to hear over chatter
+    without sounding like a warning."""
+    return _normalize(np.concatenate([
+        _melody(["C5", "E5", "G5", "E5"], gap=0.17, ring=1.2, decay=6.5, brightness=0.30),
+        _silence(0.15),
+    ]))
+
+
+def gentle_gong() -> np.ndarray:
+    """One soft strike with a long tail. For the library, exam halls, and
+    anywhere a bright chime would be wrong."""
+    return _normalize(np.concatenate([
+        _melody(["G4"], gap=0.0, ring=3.6, decay=1.1, brightness=0.22),
+        _silence(0.15),
+    ]), peak=0.55)
+
+
+def assembly() -> np.ndarray:
+    """Five notes climbing then settling. Reads as 'everybody gather', which
+    is exactly what an assembly call should sound like."""
+    return _normalize(np.concatenate([
+        _melody(["C5", "E5", "G5", "C6", "G5"], gap=0.26, ring=2.4, decay=1.8,
+                brightness=0.55),
+        _silence(0.15),
+    ]))
+
+
+def cascade() -> np.ndarray:
+    """A tumbling run down six notes. Distinctive enough that nobody mistakes
+    it for the bell schedule."""
+    return _normalize(np.concatenate([
+        _melody(["E6", "C6", "G5", "E5", "C5", "G4"], gap=0.155, ring=2.0,
+                decay=3.0, brightness=0.55),
+        _silence(0.15),
+    ]))
+
+
+def handbell() -> np.ndarray:
+    """Two bright handbell strikes. Small, sharp and carries a long way."""
+    return _normalize(np.concatenate([
+        _melody(["D6", "D6"], gap=0.34, ring=1.8, decay=4.0, brightness=0.9),
+        _silence(0.15),
+    ]), peak=0.75)
+
+
+def celesta() -> np.ndarray:
+    """Sparkling high notes. Gets attention without any hint of alarm --
+    good for good news."""
+    return _normalize(np.concatenate([
+        _melody(["G5", "C6", "E6", "G6"], gap=0.14, ring=1.8, decay=4.5,
+                brightness=0.85),
+        _silence(0.15),
+    ]), peak=0.7)
+
+
+def bright_call() -> np.ndarray:
+    """Two rising pairs, repeated. The pattern is what makes it cut through a
+    corridor at break time."""
+    pair = ["G5", "C6"]
+    return _normalize(np.concatenate([
+        _melody(pair, gap=0.16, ring=1.1, decay=5.5, brightness=0.8),
+        _silence(0.10),
+        _melody(pair, gap=0.16, ring=1.6, decay=5.5, brightness=0.8),
+        _silence(0.15),
+    ]), peak=0.78)
+
+
 def end_tone() -> np.ndarray:
     """Optional short descending tone marking the end of an announcement."""
     return _normalize(np.concatenate([
@@ -242,6 +319,14 @@ CHIMES = {
     "urgent": urgent,
     # Longer, melodic ones
     "westminster": westminster,
+    "tubular_bells": tubular_bells,
+    "assembly": assembly,
+    "marimba": marimba,
+    "celesta": celesta,
+    "cascade": cascade,
+    "handbell": handbell,
+    "bright_call": bright_call,
+    "gentle_gong": gentle_gong,
     "arrival": arrival,
     "fanfare": fanfare,
     "xylophone": xylophone,

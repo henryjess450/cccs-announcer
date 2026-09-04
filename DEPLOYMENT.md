@@ -319,6 +319,28 @@ Two things worth doing:
 
 ---
 
+## Scheduled announcements
+
+**Scheduled** in the top right of the announcement page. Staff schedule their
+own; administrators see and edit everyone's.
+
+Choose what to announce, how often (every school day, every day, certain days,
+or once on a date) and a time. Every time is **school time** —
+`America/Vancouver`, which covers Vancouver and Victoria — and stays correct
+when the clocks change in March and November. A 3:10 PM bus call is 3:10 PM in
+both halves of the year.
+
+Two behaviours worth knowing:
+
+- **A missed announcement is not replayed.** If the announcer was switched off,
+  anything more than ten minutes late is skipped and the reason is shown in the
+  list. Monday morning does not open with everything the weekend missed.
+- **Scheduled announcements go through the same queue as everything else**, so
+  one can never talk over a live announcement.
+
+Pause a schedule rather than deleting it if it is seasonal — a paused schedule
+keeps its settings and stops firing.
+
 ## Adding staff accounts
 
 Sign in as an administrator and click **Admin** in the top right.
@@ -502,6 +524,16 @@ The chime comes from a file on disk and the speech comes from Piper, so a
 working chime with no speech means Piper specifically has failed. Check
 `/health` — the `tts` section will say why — and see "It cannot produce speech" above.
 
+### Someone wants their name said before their announcements
+
+**Change**, next to *Your announcements* on the announcement page, then tick
+**Say my name before my announcements**. Their announcements then start
+"Announcement from Mr. Smith." — and they can set how the name is read out, so
+the PA says "Mr. Smith" while the log still records the name on the account.
+
+It is off unless somebody turns it on. Hearing it forty times a day would wear
+thin, and most announcements do not need it.
+
 ### Someone wants a different chime
 
 Each staff member picks their own. They choose it on the screen where they set
@@ -510,10 +542,18 @@ their password when they first sign in, and can change it any time from
 sound has a **Listen** button that plays it on their own computer, never over
 the speakers.
 
-There are twelve. The longer ones are much better at stopping a corridor:
+There are twenty, grouped by what they are for. The longer ones are much
+better at stopping a corridor:
 
 | Sound | |
 |---|---|
+| **Fanfare** | Four notes climbing to a held top note. Best at cutting through noise. |
+| **Assembly call** | Five notes climbing then settling. Sounds like "everybody gather". |
+| **Tubular bells** | Three deep struck bells. Reads as a school rather than a shop. |
+| **Bright call** | Two rising pairs, repeated. Cuts through a corridor at break. |
+| **Handbell** | Two bright strikes. Small, sharp, carries a long way. |
+| **Marimba**, **Celesta**, **Cascade** | Warm and friendly rather than alarming. |
+| **Gentle gong** | One soft strike with a long tail. For the library and exam halls. |
 | **Westminster clock** | The four-note school clock. Everyone already reads it as "listen up". |
 | **Arrival chime** | Warm three-note rise, like an airport. Friendly and hard to miss. |
 | **Fanfare** | Four notes climbing to a held top note. Best at cutting through noise. |

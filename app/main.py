@@ -21,7 +21,7 @@ import hashlib
 import logging
 import threading
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -35,7 +35,7 @@ from .accounts import Accounts, AuthError, ROLE_ADMIN, ROLE_STAFF, ROLES
 from .audio import build_audio_backend
 from .audio.base import AudioUnavailable
 from .auth import AppError, load_session, optional_user, require_admin, require_user
-from .chimes import ChimeLibrary
+from .chimes import GROUPS as CHIME_GROUPS, ChimeLibrary
 from .config import Config, ensure_directories, load_config
 from .db import (
     STATE_FAILED,
@@ -43,6 +43,8 @@ from .db import (
     STATE_PLAYING,
     STATE_QUEUED,
     Database,
+    now_iso,
+    parse_iso,
     utcnow,
 )
 from .events import Broadcaster, sse_message
@@ -58,6 +60,18 @@ from .netinfo import (
 from .normalize import normalize
 from .player import Player
 from .ratelimit import RateLimiter
+from .schedules import (
+    KIND_ONCE,
+    KINDS,
+    ScheduleError,
+    decide,
+    describe,
+    format_time,
+    next_occurrence,
+    parse_days,
+    parse_time,
+    school_zone,
+)
 from .security import generate_password, verify_password
 from .singleton import InstanceLock
 from .tts import build_tts_engine
@@ -148,9 +162,26 @@ class PasswordRequest(BaseModel):
     chime: Optional[str] = None
 
 
-class ChimeRequest(BaseModel):
-    """Which sound this person's announcements play. None = the school default."""
+class ScheduleRequest(BaseModel):
+    """An announcement that goes out on a timetable, in school time."""
+    text: str
+    kind: str = "weekdays"
+    at_time: str
+    days: Optional[List[int]] = None
+    on_date: Optional[str] = None
+    starts_on: Optional[str] = None
+    ends_on: Optional[str] = None
+    priority: bool = False
     chime: Optional[str] = None
+    enabled: bool = True
+
+
+class SettingsRequest(BaseModel):
+    """A person's own announcement settings. Anything left out is unchanged."""
+    chime: Optional[str] = None
+    clear_chime: bool = False
+    announce_name: Optional[bool] = None
+    spoken_name: Optional[str] = None
 
 
 class SetupRequest(BaseModel):
@@ -213,6 +244,19 @@ class Services:
         # set up. Stops the moment somebody claims the administrator account.
         self._address_thread: Optional[threading.Thread] = None
         self._stop_address = threading.Event()
+
+        # Scheduled announcements. The zone is resolved once; everything that
+        # converts between school time and UTC goes through app/schedules.py.
+        self.zone = school_zone(config.timezone)
+        if self.zone is None:
+            log.warning(
+                "Timezone %r could not be loaded -- scheduled announcements will "
+                "use UTC, which is almost certainly the wrong time. On Windows "
+                "this usually means the 'tzdata' package is missing.",
+                config.timezone,
+            )
+        self._schedule_thread: Optional[threading.Thread] = None
+        self._stop_schedules = threading.Event()
 
         self.player = Player(
             config=config,
@@ -520,6 +564,124 @@ class Services:
             )
         print("\n".join(lines), flush=True)
 
+    # -- scheduled announcements -------------------------------------------
+
+    def compute_next_run(self, schedule: Dict[str, Any],
+                         after: Optional[datetime] = None) -> Optional[str]:
+        """When this schedule should next fire, as a UTC timestamp string."""
+        moment = next_occurrence(
+            kind=schedule["kind"],
+            at=parse_time(schedule["at_time"]),
+            days=parse_days(schedule.get("days")),
+            on_date=schedule.get("on_date"),
+            after=after or utcnow(),
+            zone=self.zone,
+            starts_on=schedule.get("starts_on"),
+            ends_on=schedule.get("ends_on"),
+        )
+        if moment is None:
+            return None
+        return moment.astimezone(timezone.utc).isoformat(
+            timespec="seconds").replace("+00:00", "Z")
+
+    def run_due_schedules(self) -> int:
+        """Queue anything that is due. Returns how many went out.
+
+        Called on a timer, and safe to call at any moment: each schedule's next
+        run is advanced before the announcement is queued, so a slow queue can
+        never cause the same schedule to fire twice.
+        """
+        now = utcnow()
+        fired = 0
+
+        for schedule in self.db.due_schedules(now_iso()):
+            due_at = parse_iso(schedule["next_run_at"])
+            if due_at is None:
+                self.db.update_schedule(schedule["id"], next_run_at=None, enabled=0)
+                continue
+
+            verdict = decide(due_at, now, self.config.schedule_grace_minutes)
+
+            # Advance FIRST. If queueing throws, the schedule still moves on
+            # rather than retrying every twenty seconds forever.
+            #
+            # "Once" is settled here rather than by working out whether its
+            # date is still in the future. Relying on that comparison means a
+            # wrong clock, or a hand-edited row, could make a one-off repeat --
+            # and a one-off repeating is exactly the announcement nobody is
+            # expecting.
+            following = (
+                None if schedule["kind"] == KIND_ONCE
+                else self.compute_next_run(schedule, after=due_at)
+            )
+            self.db.update_schedule(
+                schedule["id"],
+                next_run_at=following,
+                enabled=1 if following else 0,
+                last_run_at=now_iso(),
+                last_result="sent" if verdict.fire else verdict.skipped_reason,
+            )
+
+            if not verdict.fire:
+                if verdict.skipped_reason != "not yet":
+                    log.warning("Scheduled announcement %s skipped: %s",
+                                schedule["id"], verdict.skipped_reason)
+                continue
+
+            try:
+                owner = self.accounts.get(schedule["user_id"]) if schedule["user_id"] else None
+                text = schedule["text"]
+                if owner is not None and owner.announce_name:
+                    text = f"Announcement from {owner.announced_as}. {text}"
+                spoken = normalize(text).normalized
+                chime = schedule["chime"] or (owner.chime if owner else None) \
+                    or self.config.default_chime
+
+                self.db.enqueue(
+                    raw_text=schedule["text"],
+                    normalized_text=spoken,
+                    chime=chime,
+                    user_name=schedule["user_name"],
+                    user_id=schedule["user_id"],
+                    priority=schedule["priority"],
+                    zone=schedule["zone"],
+                    kind="scheduled",
+                    estimated_seconds=self.player.estimate_seconds(spoken, chime),
+                )
+                self.player.notify_new_item()
+                fired += 1
+                log.info("Scheduled announcement %s queued (%s)",
+                         schedule["id"], schedule["user_name"])
+            except Exception:
+                log.exception("Could not queue scheduled announcement %s", schedule["id"])
+                self.db.update_schedule(
+                    schedule["id"],
+                    last_result="could not be queued -- see the log",
+                )
+
+        if fired:
+            self.publish_status()
+        return fired
+
+    def start_scheduler(self) -> None:
+        def loop() -> None:
+            while not self._stop_schedules.is_set():
+                try:
+                    self.run_due_schedules()
+                except Exception:
+                    # A scheduling fault must never take the announcer down.
+                    log.exception("The schedule check failed")
+                self._stop_schedules.wait(max(5, self.config.schedule_check_seconds))
+
+        self._schedule_thread = threading.Thread(
+            target=loop, name="pa-scheduler", daemon=True)
+        self._schedule_thread.start()
+        log.info("Scheduler started (school time = %s, checking every %ss)",
+                 self.config.timezone, self.config.schedule_check_seconds)
+
+    def stop_scheduler(self) -> None:
+        self._stop_schedules.set()
+
     # -- saying the address out loud --------------------------------------
 
     def start_address_announcements(self) -> None:
@@ -637,6 +799,7 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
         services.player.start()
         services.publish_status()
         services.start_address_announcements()
+        services.start_scheduler()
         log.info(
             "CCCS Announcer %s ready | audio=%s | tts=%s | accounts=%s | address=%s",
             VERSION, services.audio.describe(), services.tts.describe(),
@@ -648,6 +811,7 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
         finally:
             log.info("Shutting down; waiting for the current announcement to finish")
             services.stop_address_announcements()
+            services.stop_scheduler()
             services.player.shutdown()
             services.instance_lock.release()
 
@@ -669,6 +833,17 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
         return JSONResponse(payload, status_code=exc.status_code)
 
     # -- helpers -----------------------------------------------------------
+
+    def spoken_text_for(user, typed: str) -> str:
+        """What will actually come out of the speakers.
+
+        Preview and Send both go through this, so what somebody hears in their
+        browser is exactly what the school hears -- including the "Announcement
+        from ..." opening, if they have turned it on.
+        """
+        if user.announce_name:
+            typed = f"Announcement from {user.announced_as}. {typed}"
+        return normalize(typed).normalized
 
     def client_ip(request: Request) -> str:
         return request.client.host if request.client else "unknown"
@@ -704,6 +879,12 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
         if optional_user(request) is not None:
             return RedirectResponse("/", status_code=303)
         return render_page("login.html")
+
+    @app.get("/schedule", include_in_schema=False)
+    def schedule_page(request: Request):
+        if optional_user(request) is None:
+            return RedirectResponse("/login", status_code=303)
+        return render_page("schedule.html")
 
     @app.get("/admin", include_in_schema=False)
     def admin_page(request: Request):
@@ -862,6 +1043,8 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
             "chime_locked": False,
             "chime_label": chime.label if chime else services.config.default_chime,
             "my_chime": user.chime,
+            "announce_name": user.announce_name,
+            "announced_as": user.announced_as,
             "chimes": [
                 {"key": c.key, "label": c.label, "seconds": round(c.seconds, 2)}
                 for c in services.chimes.available()
@@ -881,7 +1064,7 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
 
     @app.get("/api/chimes")
     def api_chimes(request: Request) -> Dict[str, Any]:
-        """Every sound staff can pick from, with a line about each."""
+        """Every sound staff can pick from, grouped, with a line about each."""
         user = require_user(request)
         return {
             "chimes": [
@@ -890,9 +1073,11 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
                     "label": chime.label,
                     "description": chime.description,
                     "seconds": round(chime.seconds, 2),
+                    "group": chime.group,
                 }
                 for chime in services.chimes.available()
             ],
+            "groups": [name for name, _ in CHIME_GROUPS],
             "default_chime": services.config.default_chime,
             "chosen": user.chime,
         }
@@ -913,23 +1098,49 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
             headers={"Cache-Control": "no-store"},
         )
 
-    @app.post("/api/my-chime")
-    def api_set_my_chime(body: ChimeRequest, request: Request) -> Dict[str, Any]:
+    @app.post("/api/my-settings")
+    def api_my_settings(body: SettingsRequest, request: Request) -> Dict[str, Any]:
+        """The announcement settings that belong to a person, not the school."""
         user = require_user(request)
-        chosen = (body.chime or "").strip() or None
-        if chosen is not None and services.chimes.path_for(chosen) is None:
-            raise AppError(400, "That sound isn't available.", "no_such_chime")
-        services.accounts.set_chime(user.id, chosen)
-        log.info("%s chose the %s chime", user.username, chosen or "school default")
-        return {"chime": chosen}
+
+        if body.clear_chime:
+            services.accounts.set_chime(user.id, None)
+        elif body.chime is not None:
+            chosen = body.chime.strip() or None
+            if chosen is not None and services.chimes.path_for(chosen) is None:
+                raise AppError(400, "That sound isn't available.", "no_such_chime")
+            services.accounts.set_chime(user.id, chosen)
+
+        if body.announce_name is not None or body.spoken_name is not None:
+            enabled = user.announce_name if body.announce_name is None else body.announce_name
+            spoken = user.spoken_name if body.spoken_name is None else body.spoken_name
+            try:
+                services.accounts.set_announce_name(user.id, enabled, spoken)
+            except ValueError as exc:
+                raise AppError(400, str(exc), "bad_spoken_name")
+
+        updated = services.accounts.get(user.id)
+        log.info(
+            "%s updated their settings (chime=%s, say name=%s)",
+            user.username, updated.chime or "school default", updated.announce_name,
+        )
+        return {
+            "chime": updated.chime,
+            "announce_name": updated.announce_name,
+            "spoken_name": updated.spoken_name,
+            "announced_as": updated.announced_as,
+            "example": normalize(
+                f"Announcement from {updated.announced_as}. Buses are here."
+            ).normalized,
+        }
 
     @app.post("/api/normalize")
     def api_normalize(body: NormalizeRequest, request: Request) -> Dict[str, Any]:
-        require_user(request)
+        user = require_user(request)
         result = normalize(body.text)
         return {
             "raw": result.raw,
-            "normalized": result.normalized,
+            "normalized": spoken_text_for(user, body.text),
             "warnings": result.warnings,
             "chars": len(body.text),
             "max_chars": services.config.max_chars,
@@ -953,8 +1164,8 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
         """
         user = require_user(request)
 
-        result = normalize(body.text)
-        if not result.normalized.strip():
+        spoken = spoken_text_for(user, body.text)
+        if not spoken.strip():
             raise AppError(400, "Type an announcement first.", "empty")
         if len(body.text) > services.config.max_chars:
             raise AppError(
@@ -975,11 +1186,11 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
         try:
             digest = hashlib.sha256(
                 f"{services.tts.name}|{services.config.piper_length_scale}|"
-                f"{result.normalized}".encode("utf-8")
+                f"{spoken}".encode("utf-8")
             ).hexdigest()[:32]
             path = services.config.audio_cache_dir / f"preview-{digest}.wav"
             if not path.exists() or path.stat().st_size < 128:
-                services.tts.synthesize(result.normalized, path)
+                services.tts.synthesize(spoken, path)
             services.sweep_previews()
             audio = path.read_bytes()
         except TTSError as exc:
@@ -1012,8 +1223,8 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
                 f"{services.config.max_chars} characters.",
                 "too_long",
             )
-        result = normalize(raw)
-        if not result.normalized.strip():
+        spoken = spoken_text_for(user, raw)
+        if not spoken.strip():
             raise AppError(400, "Type an announcement first.", "empty")
 
         if body.zone != "all":
@@ -1043,10 +1254,12 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
         if chime_key and services.chimes.path_for(chime_key) is None:
             raise AppError(500, "The chime sound is missing. Tell IT.", "chime_missing")
 
-        estimated = services.player.estimate_seconds(result.normalized, chime_key)
+        estimated = services.player.estimate_seconds(spoken, chime_key)
         item_id = services.db.enqueue(
+            # raw_text stays exactly what they typed, so the log shows what a
+            # person wrote; normalized_text is what the school actually heard.
             raw_text=raw,
-            normalized_text=result.normalized,
+            normalized_text=spoken,
             chime=chime_key,
             user_name=user.display_name,
             user_id=user.id,
@@ -1059,7 +1272,7 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
             "Announcement %s queued by %s (%s chars, priority=%s)",
             item_id, user.username, len(raw), body.priority,
             extra={"announcement_id": item_id, "username": user.username,
-                   "normalized": result.normalized},
+                   "normalized": spoken},
         )
         services.publish_status()
 
@@ -1068,8 +1281,8 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
         seconds_until = next((q["seconds_until"] for q in snapshot["queue"] if q["id"] == item_id), 0.0)
         return {
             "id": item_id,
-            "normalized": result.normalized,
-            "warnings": result.warnings,
+            "normalized": spoken,
+            "warnings": normalize(raw).warnings,
             "position": position,
             "ahead": max(0, position - 1) + (1 if snapshot["now_playing"] else 0),
             "seconds_until": seconds_until,
@@ -1232,6 +1445,181 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
             "voice": services.tts.describe(),
             "version": VERSION,
         }
+
+    # -- scheduled announcements -------------------------------------------
+
+    def schedule_view(row: Dict[str, Any]) -> Dict[str, Any]:
+        at = parse_time(row["at_time"])
+        days = parse_days(row.get("days"))
+        local_next = None
+        if row.get("next_run_at"):
+            moment = parse_iso(row["next_run_at"])
+            if moment is not None and services.zone is not None:
+                local = moment.astimezone(services.zone)
+                local_next = local.strftime("%a %d %b, ") + format_time(local.time())
+            elif moment is not None:
+                local_next = moment.isoformat()
+        return {
+            "id": row["id"],
+            "user_id": row["user_id"],
+            "user_name": row["user_name"],
+            "text": row["text"],
+            "kind": row["kind"],
+            "at_time": row["at_time"],
+            "at_time_label": format_time(at),
+            "days": days,
+            "on_date": row["on_date"],
+            "starts_on": row["starts_on"],
+            "ends_on": row["ends_on"],
+            "priority": bool(row["priority"]),
+            "chime": row["chime"],
+            "enabled": bool(row["enabled"]),
+            "when": describe(row["kind"], at, days, row["on_date"]),
+            "next_run_label": local_next,
+            "last_run_at": row["last_run_at"],
+            "last_result": row["last_result"],
+        }
+
+    def build_schedule_fields(body: ScheduleRequest, user) -> Dict[str, Any]:
+        text = (body.text or "").strip()
+        if not text:
+            raise AppError(400, "Type what should be announced.", "empty")
+        if len(text) > services.config.max_chars:
+            raise AppError(
+                400,
+                f"That announcement is too long. Please keep it to "
+                f"{services.config.max_chars} characters.",
+                "too_long",
+            )
+        if not normalize(text).normalized.strip():
+            raise AppError(400, "There is nothing speakable in that.", "empty")
+        if body.kind not in KINDS:
+            raise AppError(400, "Choose how often this should repeat.", "bad_kind")
+
+        try:
+            at = parse_time(body.at_time)
+            days = parse_days(",".join(str(d) for d in (body.days or [])))
+        except ScheduleError as exc:
+            raise AppError(400, str(exc), "bad_schedule")
+
+        if body.kind == "weekly" and not days:
+            raise AppError(400, "Pick which days of the week this should run.",
+                           "bad_schedule")
+        if body.kind == "once" and not body.on_date:
+            raise AppError(400, "Give the date this should run on.", "bad_schedule")
+
+        if body.chime is not None and body.chime.strip():
+            if services.chimes.path_for(body.chime.strip()) is None:
+                raise AppError(400, "That sound isn't available.", "no_such_chime")
+
+        return {
+            "user_id": user.id,
+            "user_name": user.display_name,
+            "text": text,
+            "chime": (body.chime or "").strip() or None,
+            "priority": 1 if body.priority else 0,
+            "zone": "all",
+            "kind": body.kind,
+            "at_time": f"{at.hour:02d}:{at.minute:02d}",
+            "days": ",".join(str(d) for d in days) or None,
+            "on_date": body.on_date or None,
+            "starts_on": body.starts_on or None,
+            "ends_on": body.ends_on or None,
+            "enabled": 1 if body.enabled else 0,
+        }
+
+    @app.get("/api/schedules")
+    def api_list_schedules(request: Request) -> Dict[str, Any]:
+        """Staff see their own; administrators see everyone's."""
+        user = require_user(request)
+        rows = services.db.schedules(None if user.is_admin else user.id)
+        return {
+            "schedules": [schedule_view(row) for row in rows],
+            "scope": "everyone" if user.is_admin else "you",
+            "timezone": services.config.timezone,
+            "timezone_ok": services.zone is not None,
+        }
+
+    @app.post("/api/schedules", status_code=201)
+    def api_create_schedule(body: ScheduleRequest, request: Request) -> Dict[str, Any]:
+        user = require_user(request)
+        fields = build_schedule_fields(body, user)
+
+        try:
+            preview = dict(fields)
+            next_run = services.compute_next_run(preview)
+        except ScheduleError as exc:
+            raise AppError(400, str(exc), "bad_schedule")
+        if next_run is None:
+            raise AppError(
+                400,
+                "That would never happen -- check the date and the days.",
+                "never_runs",
+            )
+
+        schedule_id = services.db.add_schedule(next_run_at=next_run, **fields)
+        log.info("%s scheduled an announcement (%s)", user.username, fields["kind"])
+        services.accounts.record_event(
+            "schedule.created", username=user.username, user_id=user.id,
+            ip=client_ip(request), detail=f"schedule {schedule_id}",
+        )
+        return {"schedule": schedule_view(services.db.get_schedule(schedule_id))}
+
+    @app.post("/api/schedules/{schedule_id}")
+    def api_update_schedule(schedule_id: int, body: ScheduleRequest,
+                            request: Request) -> Dict[str, Any]:
+        user = require_user(request)
+        existing = services.db.get_schedule(schedule_id)
+        if existing is None:
+            raise AppError(404, "That schedule no longer exists.", "not_found")
+        if not user.is_admin and existing["user_id"] != user.id:
+            raise AppError(403, "You can only change your own scheduled "
+                                "announcements.", "not_yours")
+
+        fields = build_schedule_fields(body, user)
+        # Keep it attributed to whoever created it, even when an administrator
+        # edits it -- the log has to stay honest about whose announcement it is.
+        fields["user_id"] = existing["user_id"]
+        fields["user_name"] = existing["user_name"]
+
+        next_run = services.compute_next_run(dict(fields))
+        if next_run is None and body.enabled:
+            raise AppError(400, "That would never happen -- check the date and "
+                                "the days.", "never_runs")
+        services.db.update_schedule(schedule_id, next_run_at=next_run, **fields)
+        return {"schedule": schedule_view(services.db.get_schedule(schedule_id))}
+
+    @app.post("/api/schedules/{schedule_id}/enabled")
+    def api_toggle_schedule(schedule_id: int, request: Request,
+                            enabled: bool = True) -> Dict[str, Any]:
+        user = require_user(request)
+        existing = services.db.get_schedule(schedule_id)
+        if existing is None:
+            raise AppError(404, "That schedule no longer exists.", "not_found")
+        if not user.is_admin and existing["user_id"] != user.id:
+            raise AppError(403, "You can only change your own scheduled "
+                                "announcements.", "not_yours")
+
+        next_run = services.compute_next_run(existing) if enabled else None
+        services.db.update_schedule(
+            schedule_id, enabled=1 if enabled else 0, next_run_at=next_run)
+        return {"schedule": schedule_view(services.db.get_schedule(schedule_id))}
+
+    @app.post("/api/schedules/{schedule_id}/delete")
+    def api_delete_schedule(schedule_id: int, request: Request) -> Dict[str, Any]:
+        user = require_user(request)
+        existing = services.db.get_schedule(schedule_id)
+        if existing is None:
+            raise AppError(404, "That schedule no longer exists.", "not_found")
+        if not user.is_admin and existing["user_id"] != user.id:
+            raise AppError(403, "You can only delete your own scheduled "
+                                "announcements.", "not_yours")
+        services.db.delete_schedule(schedule_id)
+        services.accounts.record_event(
+            "schedule.deleted", username=user.username, user_id=user.id,
+            ip=client_ip(request), detail=f"schedule {schedule_id}",
+        )
+        return {"deleted": True}
 
     # -- admin: accounts ---------------------------------------------------
 

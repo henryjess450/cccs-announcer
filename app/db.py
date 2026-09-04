@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 7
 
 # Announcement lifecycle. Anything not in {queued, playing} is terminal.
 STATE_QUEUED = "queued"
@@ -148,6 +148,46 @@ _MIGRATIONS = {
     -- screen that no longer appears for them. The first-run administrator
     -- account keeps its flag: that one genuinely has to be claimed.
     UPDATE users SET must_change_password = 0 WHERE is_bootstrap = 0;
+    """,
+    6: """
+    -- Optionally say who an announcement is from before saying it.
+    -- Off by default: most announcements do not need it, and hearing
+    -- "Announcement from ..." forty times a day would wear thin.
+    ALTER TABLE users ADD COLUMN announce_name INTEGER NOT NULL DEFAULT 0;
+    -- How the name should be SAID, which is not always the name on the
+    -- account: "Mr. Smith" rather than "Jonathan Smith". NULL means use the
+    -- display name.
+    ALTER TABLE users ADD COLUMN spoken_name TEXT;
+    """,
+    7: """
+    -- Announcements that go out on a timetable.
+    --
+    -- at_time and the day fields are in the SCHOOL's timezone, because that is
+    -- what somebody typed. next_run_at is UTC, because that is what a clock
+    -- comparison needs. Everything that converts between the two lives in
+    -- app/schedules.py.
+    CREATE TABLE IF NOT EXISTS schedules (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        created_at  TEXT    NOT NULL,
+        user_id     INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        user_name   TEXT    NOT NULL,
+        text        TEXT    NOT NULL,
+        chime       TEXT,
+        priority    INTEGER NOT NULL DEFAULT 0,
+        zone        TEXT    NOT NULL DEFAULT 'all',
+        kind        TEXT    NOT NULL,          -- once | daily | weekdays | weekly
+        at_time     TEXT    NOT NULL,          -- HH:MM, school time
+        days        TEXT,                      -- '0,2,4' for weekly, Monday = 0
+        on_date     TEXT,                      -- YYYY-MM-DD for a one-off
+        starts_on   TEXT,
+        ends_on     TEXT,
+        enabled     INTEGER NOT NULL DEFAULT 1,
+        next_run_at TEXT,                      -- UTC
+        last_run_at TEXT,
+        last_result TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_schedule_due
+        ON schedules (enabled, next_run_at);
     """,
 }
 
@@ -393,6 +433,60 @@ class Database:
             params.append(before)
         cursor = self.connect().execute(sql, params)
         return int(cursor.rowcount)
+
+    # -- schedules -----------------------------------------------------------
+
+    def add_schedule(self, **fields: Any) -> int:
+        columns = ", ".join(fields)
+        markers = ", ".join("?" for _ in fields)
+        cursor = self.connect().execute(
+            f"INSERT INTO schedules (created_at, {columns}) VALUES (?, {markers})",
+            (now_iso(), *fields.values()),
+        )
+        return int(cursor.lastrowid)
+
+    def update_schedule(self, schedule_id: int, **fields: Any) -> None:
+        if not fields:
+            return
+        assignments = ", ".join(f"{name} = ?" for name in fields)
+        self.connect().execute(
+            f"UPDATE schedules SET {assignments} WHERE id = ?",
+            (*fields.values(), schedule_id),
+        )
+
+    def get_schedule(self, schedule_id: int) -> Optional[Dict[str, Any]]:
+        row = self.connect().execute(
+            "SELECT * FROM schedules WHERE id = ?", (schedule_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    def delete_schedule(self, schedule_id: int) -> bool:
+        cursor = self.connect().execute(
+            "DELETE FROM schedules WHERE id = ?", (schedule_id,)
+        )
+        return cursor.rowcount > 0
+
+    def schedules(self, user_id: Optional[int] = None) -> List[Dict[str, Any]]:
+        """All schedules, or one person's. Soonest first, then alphabetical."""
+        if user_id is None:
+            rows = self.connect().execute(
+                "SELECT * FROM schedules ORDER BY enabled DESC, next_run_at ASC, id ASC"
+            ).fetchall()
+        else:
+            rows = self.connect().execute(
+                "SELECT * FROM schedules WHERE user_id = ? "
+                "ORDER BY enabled DESC, next_run_at ASC, id ASC",
+                (user_id,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def due_schedules(self, now: str) -> List[Dict[str, Any]]:
+        rows = self.connect().execute(
+            "SELECT * FROM schedules WHERE enabled = 1 AND next_run_at IS NOT NULL "
+            "AND next_run_at <= ? ORDER BY next_run_at ASC",
+            (now,),
+        ).fetchall()
+        return [dict(r) for r in rows]
 
     # -- speaking-rate estimate ---------------------------------------------
 

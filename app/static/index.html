@@ -25,6 +25,7 @@
 
   <div class="who">
     <span class="who__name" id="who-name"></span>
+    <a class="who__link" href="/schedule">Scheduled</a>
     <a class="who__link" id="admin-link" href="/admin" hidden>Admin</a>
     <button type="button" class="who__link" id="signout">Sign out</button>
   </div>
@@ -104,7 +105,7 @@
     </form>
 
     <p class="mysound">
-      Your announcement sound:
+      Your announcements:
       <strong id="my-chime-label">&hellip;</strong>
       <button type="button" class="linkbtn" id="change-chime">Change</button>
       <span class="mysound__sep">&middot;</span>
@@ -220,16 +221,39 @@
 <div class="overlay" id="chime-overlay" hidden>
   <div class="card overlay__card" role="dialog" aria-modal="true"
        aria-labelledby="chime-title">
-    <h2 class="overlay__title" id="chime-title">Your announcement sound</h2>
-    <p class="overlay__lead">
-      This plays before everything you announce. Press Listen to hear one —
-      it plays on this computer only, never over the speakers.
-    </p>
+    <h2 class="overlay__title" id="chime-title">Your announcements</h2>
 
     <div class="banner banner--error signin__error" id="chime-error" role="alert" hidden>
       <span id="chime-error-text"></span>
     </div>
 
+    <div class="options__item options__item--check">
+      <input type="checkbox" id="say-name" class="field__check">
+      <div>
+        <label class="field__label field__label--inline" for="say-name">
+          Say my name before my announcements
+        </label>
+        <p class="field__hint" id="say-name-example">
+          Off. Your announcements start with whatever you type.
+        </p>
+      </div>
+    </div>
+
+    <div id="spoken-name-wrap" hidden>
+      <label class="field__label" for="spoken-name">How your name should be said</label>
+      <input class="field__input field__input--line" id="spoken-name" type="text"
+             maxlength="60" placeholder="Mr. Smith">
+      <p class="field__hint">
+        This is only how it is read out. The announcement log always records
+        the name on your account.
+      </p>
+    </div>
+
+    <p class="field__label" style="margin-top:18px">Your announcement sound</p>
+    <p class="field__hint">
+      Plays before everything you announce. Press Listen to hear one — it plays
+      on this computer only, never over the speakers.
+    </p>
     <div id="change-chimes" class="chimes__list">Loading&hellip;</div>
 
     <div class="actions">

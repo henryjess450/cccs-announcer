@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scheduled announcements — CCCS</title>
+<link rel="stylesheet" href="/static/styles.css?v=__VERSION__">
+</head>
+<body>
+
+<div class="stickytop">
+<header class="topbar">
+  <h1 class="topbar__title">Scheduled announcements</h1>
+  <div class="who">
+    <span class="who__name" id="who-name"></span>
+    <a class="who__link" href="/">Back to announcements</a>
+    <button type="button" class="who__link" id="signout">Sign out</button>
+  </div>
+</header>
+
+<div class="banner banner--error" id="banner" role="alert" hidden>
+  <span class="banner__text" id="banner-text"></span>
+</div>
+</div>
+
+<main class="layout layout--single">
+
+  <section class="card" aria-labelledby="new-heading">
+    <h2 id="new-heading" class="card__heading">Schedule an announcement</h2>
+    <p class="notice" style="margin-top:0;border:0;padding-top:0" id="tz-note"></p>
+
+    <form id="schedule-form" novalidate>
+      <label class="field__label" for="text">What should be announced?</label>
+      <textarea id="text" class="field__input" rows="3"
+                placeholder="Buses are now loading. Buses are now loading."></textarea>
+      <p class="counter" id="counter">0 / 500 characters</p>
+
+      <div class="inline-form">
+        <div>
+          <label class="field__label" for="kind">How often</label>
+          <select class="field__select" id="kind">
+            <option value="weekdays" selected>Every school day (Mon&ndash;Fri)</option>
+            <option value="daily">Every day</option>
+            <option value="weekly">Certain days</option>
+            <option value="once">Once, on a date</option>
+          </select>
+        </div>
+        <div>
+          <label class="field__label" for="at-time">At what time</label>
+          <input class="field__input field__input--line" id="at-time" type="time"
+                 value="15:10">
+        </div>
+        <div id="date-wrap" hidden>
+          <label class="field__label" for="on-date">On which date</label>
+          <input class="field__input field__input--line" id="on-date" type="date">
+        </div>
+      </div>
+
+      <fieldset id="days-wrap" class="chimes" hidden>
+        <legend class="field__label">Which days</legend>
+        <div class="days" id="days"></div>
+      </fieldset>
+
+      <div class="options">
+        <div class="options__item options__item--check">
+          <input type="checkbox" id="priority" class="field__check">
+          <div>
+            <label class="field__label field__label--inline" for="priority">Priority</label>
+            <p class="field__hint">Jumps the queue when it goes out.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button type="submit" class="btn btn--send" id="save">Schedule it</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="card" aria-labelledby="list-heading">
+    <h2 id="list-heading" class="card__heading">Already scheduled</h2>
+    <div class="table-wrap">
+      <table class="grid" id="list">
+        <thead>
+          <tr>
+            <th scope="col">When</th>
+            <th scope="col">Next</th>
+            <th scope="col">Announcement</th>
+            <th scope="col">Who</th>
+            <th scope="col">Last time</th>
+            <th scope="col">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="list-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+</main>
+
+<script src="/static/schedule.js?v=__VERSION__"></script>
+</body>
+</html>

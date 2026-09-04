@@ -69,6 +69,10 @@
   var chimeCancel   = el("chime-cancel");
   var chimeError    = el("chime-error");
   var chimeErrorTxt = el("chime-error-text");
+  var sayName       = el("say-name");
+  var sayNameEg     = el("say-name-example");
+  var spokenWrap    = el("spoken-name-wrap");
+  var spokenName    = el("spoken-name");
   var setupName     = el("setup-name");
   var setupUsername = el("setup-username");
 
@@ -309,8 +313,16 @@
     return loadChimes().then(function (data) {
       container.innerHTML = "";
       var selected = chosen || data.default_chime;
+      var lastGroup = null;
 
       data.chimes.forEach(function (chime) {
+        if (chime.group && chime.group !== lastGroup) {
+          lastGroup = chime.group;
+          var heading = document.createElement("p");
+          heading.className = "chime__group";
+          heading.textContent = chime.group;
+          container.appendChild(heading);
+        }
         var row = document.createElement("div");
         row.className = "chime" + (chime.key === selected ? " chime--chosen" : "");
 
@@ -383,14 +395,35 @@
       data.chimes.forEach(function (chime) {
         if (chime.key === wanted) { match = chime; }
       });
-      myChimeLabel.textContent = match
+      var summary = match
         ? match.label + (key ? "" : " (the school default)")
         : wanted;
+      if (me && me.announce_name) {
+        summary += " \u00b7 starts with your name";
+      }
+      myChimeLabel.textContent = summary;
     }).catch(function () { myChimeLabel.textContent = "\u2014"; });
   }
 
+  function syncSayName() {
+    spokenWrap.hidden = !sayName.checked;
+    if (!sayName.checked) {
+      sayNameEg.textContent = "Off. Your announcements start with whatever you type.";
+      return;
+    }
+    var name = spokenName.value.trim() ||
+               (me && me.display_name) || "your name";
+    sayNameEg.textContent = "They will start: \u201cAnnouncement from " + name + ".\u201d";
+  }
+
+  sayName.addEventListener("change", syncSayName);
+  spokenName.addEventListener("input", syncSayName);
+
   changeChime.addEventListener("click", function () {
     chimeError.hidden = true;
+    sayName.checked = !!(me && me.announce_name);
+    spokenName.value = (me && me.spoken_name) || "";
+    syncSayName();
     chimeOverlay.hidden = false;
     renderChimePicker(changeChimes, "change-chime-choice", me && me.chime);
   });
@@ -406,9 +439,18 @@
   chimeSave.addEventListener("click", function () {
     var key = chosenChime(changeChimes, "change-chime-choice");
     chimeSave.disabled = true;
-    post("/api/my-chime", { chime: key }).then(function (data) {
-      if (me) { me.chime = data.chime; }
+    post("/api/my-settings", {
+      chime: key,
+      announce_name: sayName.checked,
+      spoken_name: spokenName.value
+    }).then(function (data) {
+      if (me) {
+        me.chime = data.chime;
+        me.announce_name = data.announce_name;
+        me.spoken_name = data.spoken_name;
+      }
       showMyChime(data.chime);
+      refreshSpoken();
       closeChimeOverlay();
     }).catch(function (error) {
       chimeErrorTxt.textContent = error.message;
@@ -916,6 +958,7 @@
     maxChars = config.max_chars;
     textEl.setAttribute("maxlength", String(maxChars));
     updateCounter();
+    if (me) { me.announce_name = config.announce_name; }
     showMyChime(config.my_chime);
     if (me.must_change_password) {
       // Everything else is refused until the password is changed, including

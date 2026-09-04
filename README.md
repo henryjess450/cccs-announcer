@@ -61,6 +61,7 @@ Two rules shape everything else:
 | `app/events.py` | SSE fan-out |
 | `app/singleton.py` | Refuses to run two copies against one data folder |
 | `app/netinfo.py` | Works out the LAN address to give staff |
+| `app/schedules.py` | School time vs UTC, and when a schedule next fires |
 | `scripts/enable_autostart.ps1` | Sets up and checks unattended restart |
 | `app/accounts.py` | Users, sessions, first-run setup, lockout, security trail |
 | `app/auth.py` | Session, CSRF, and role checks for the web layer |
@@ -268,11 +269,24 @@ string.
 the file has not seen, tracked by the `schema_version` setting. Never edit a
 migration that has shipped — add a new one.
 
+## Scheduled announcements
+
+`app/schedules.py` owns the one distinction that matters: staff type times in
+the school's timezone, everything is stored in UTC, and the conversion happens
+in exactly one place. Candidate times are built in LOCAL time and then
+converted, which is what keeps "3:10 PM every day" at 3:10 PM across a clock
+change — the UTC time it fires at moves instead. There are tests on both the
+March and November boundaries.
+
+A schedule more than `PA_SCHEDULE_GRACE_MINUTES` late is skipped rather than
+fired: being that late means the announcer was off, and replaying a backlog
+into a building that has moved on is worse than missing it.
+
 ## What is not built yet
 
 - **Phase 3** — presets, the admin pronunciation editor, chime uploads,
   quiet hours, searchable/filterable log with CSV export.
-- **Phase 4** — zones, scheduling, recurring announcements.
+- **Phase 4** — zones.
 
 The database already carries `zone` and `priority` so those phases add features
 rather than reshape the schema.
